@@ -302,7 +302,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -312,6 +312,8 @@ const FIREBASE_CONFIG = {
   appId: "1:166235848103:web:15f2b392f2d21c9df24a82"
 };
 const OWNER = 'sugiyarto784@gmail.com';
+// Alamat Web App Google Apps Script "Arto Email" (diisi setelah deploy)
+const MAIL_URL = 'https://script.google.com/macros/s/AKfycbyJSYV-K2iCYM4QjWpPwtRi3bTYd79_i2vYy_yfzwJNO3AvDdRTjLFzphau2Fjt5OEK/exec';
 const CACHE_KEY = 'arto_cache_v1', MODE_KEY = 'arto_mode_v1', PIN_KEY = 'arto_pin_v1', TAB_KEY = 'arto_tab_v1';
 const LOCK_AFTER = 5 * 60 * 1000;
 
@@ -611,6 +613,7 @@ function renderRiwayat() {
       <div class="lg"><span>Pindah ke tabungan</span><b class="num">${st.saved < 0 ? '+' : '−'}${fmt(st.saved)}</b></div>
       ${st.adjust ? `<div class="lg"><span>Penyesuaian saldo</span><b class="num">${st.adjust < 0 ? '−' : '+'}${fmt(st.adjust)}</b></div>` : ''}
       <div class="lg total"><span>${isNow ? 'Saldo sekarang' : 'Saldo akhir'}</span><b class="num">${rp(st.closing)}</b></div></div>
+    ${MAIL_URL && cloud.user ? `<button class="bar-btn" data-act="mail" style="background:var(--blue);color:#fff">${svg('share')}Kirim laporan ${mLabel(m)} ke email</button>` : ''}
     <button class="bar-btn" data-act="share">${svg('share')}Bagikan laporan ${mLabel(m)}</button>
     ${where}
     <div class="seg" role="group" aria-label="Saring catatan">${[['all', 'Semua'], ['in', 'Masuk'], ['out', 'Keluar'], ['save', 'Tabungan']].map(([k, n]) => `<button aria-pressed="${filter === k}" data-f="${k}">${n}</button>`).join('')}</div>
@@ -944,6 +947,7 @@ function openSettings() {
     <div class="set-label">Akun</div><div class="set-group">
       <div class="set-row"><span class="ico g" style="width:36px;height:36px">${svg('user')}</span><span class="grow"><span class="t1">${cloud.user ? esc(cloud.user.email) : 'Mode coba'}</span><span class="t2">${cloud.user ? 'Tersimpan dan tersinkron' : 'Data hanya di perangkat ini'}</span></span></div>
       ${cloud.user ? '<button class="set-row" id="s-out"><span class="grow t1" style="color:var(--red-ink)">Keluar</span></button>' : '<button class="set-row" id="s-in"><span class="grow t1" style="color:var(--blue)">Masuk ke akun</span></button>'}</div>
+    <div class="set-label">Email</div><div class="set-group"><div class="set-row"><span class="grow"><span class="t1">Laporan & pengingat</span><span class="t2">${MAIL_URL ? 'Laporan tiap tanggal 1 dan pengingat tagihan 2 hari sebelum jatuh tempo, ke ' + OWNER : 'Belum disambungkan'}</span></span></div></div>
     <p class="hint" style="text-align:center;margin-top:16px">Arto versi ${APP_VERSION}</p>`, root => {
     const back = () => openSettings();
     root.querySelectorAll('[data-w]').forEach(r => r.onclick = () => openWalletForm(r.dataset.w, back));
@@ -1129,7 +1133,20 @@ document.addEventListener('click', e => {
   else if (d.act === 'limit') openNumberSetting('limit', 'Batas Harian', 'Batas jajan dan pengeluaran harian dalam sebulan, termasuk bensin dan belanja dapur.');
   else if (d.act === 'plan') openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".');
   else if (d.act === 'share') shareReport();
+  else if (d.act === 'mail') mailReport(t);
 });
+async function mailReport(btn) {
+  if (!MAIL_URL || !auth || !auth.currentUser) return;
+  const m = rMonth || curMonth();
+  btn.disabled = true; const old = btn.innerHTML; btn.textContent = 'Mengirim…';
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const r = await fetch(MAIL_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ idToken, month: m }) });
+    const out = await r.json(); if (!out || !out.ok) throw new Error((out && out.error) || 'gagal');
+    toast('Laporan ' + mLabel(m) + ' terkirim ke email');
+  } catch (e) { console.error(e); toast(navigator.onLine === false ? 'Tidak ada koneksi, email belum terkirim' : 'Email gagal terkirim, coba lagi', null, true); }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
 async function shareReport() {
   const text = reportText(rMonth || curMonth());
   if (navigator.share) { try { await navigator.share({ title: 'Laporan Arto', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
