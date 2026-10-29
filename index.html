@@ -298,7 +298,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.0';
+const APP_VERSION = '1.1';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -832,6 +832,8 @@ function openBillManager(back) {
 function openBillForm(id, back) {
   const b = id ? S.bills.find(x => x.id === id) : null, cm = curMonth();
   const f = b ? Object.assign({}, b) : { name: '', amount: 0, variable: false, dueDay: 1, freq: 1, startMonth: cm };
+  const firstMonthEditable = !b || (b.createdMonth || cm) === cm;
+  f.thisMonth = b ? (b.startMonth || cm) <= cm : null;   // null = ikuti tanggal jatuh tempo
   const months = Array.from({ length: 12 }, (_, i) => shiftM(cm, i));
   if (f.startMonth && !months.includes(f.startMonth)) months.unshift(f.startMonth);
   const draw = () => openSheet(b ? 'Ubah tagihan' : 'Tambah tagihan', `<div class="field"><label for="f-name">Nama tagihan</label><input id="f-name" class="text" value="${esc(f.name)}" placeholder="Contoh: Internet rumah, STNK motor" autocomplete="off"></div>
@@ -839,18 +841,26 @@ function openBillForm(id, back) {
     <div class="field"><button class="toggle" id="f-var" role="switch" aria-checked="${!!f.variable}"><span class="grow"><span class="t1">Jumlahnya berubah-ubah</span><span class="t2">Isi jumlah sebenarnya saat membayar</span></span><span class="sw"><i></i></span></button></div>
     <div class="field"><label for="f-due">Jatuh tempo tanggal</label><select id="f-due" class="sel">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${Number(f.dueDay) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
     <div class="field"><span class="lbl">Berulang</span>${chipRow('freq', FREQ, f.freq)}</div>
+    ${Number(f.freq) === 1 && firstMonthEditable ? `<div class="field"><button class="toggle" id="f-this" role="switch" aria-checked="${f.thisMonth === null ? f.dueDay >= dayOf(todayISO()) : f.thisMonth}"><span class="grow"><span class="t1">Tagih mulai bulan ini</span><span class="t2">Matikan kalau tagihan ${mLabel(cm)} sudah dibayar sebelum memakai Arto</span></span><span class="sw"><i></i></span></button></div>` : ''}
     <div class="field" ${Number(f.freq) === 1 ? 'hidden' : ''} id="f-startf"><label for="f-start">Jatuh tempo berikutnya</label><select id="f-start" class="sel">${months.map(mm => `<option value="${mm}" ${mm === f.startMonth ? 'selected' : ''}>${mLabel(mm)}</option>`).join('')}</select></div>
     <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${b ? 'Simpan perubahan' : 'Tambah tagihan'}</button>${b ? '<button class="del" id="f-del">Hapus tagihan</button>' : ''}`, root => {
     const keep = () => { f.name = root.querySelector('#f-name').value; f.dueDay = Number(root.querySelector('#f-due').value); f.startMonth = root.querySelector('#f-start').value; };
     bindMoney(root.querySelector('#f-amt'), v => { f.amount = v; });
     root.querySelector('#f-var').onclick = () => { keep(); f.variable = !f.variable; draw(); };
+    const ft = root.querySelector('#f-this'); if (ft) ft.onclick = () => { keep(); f.thisMonth = ft.getAttribute('aria-checked') !== 'true'; draw(); };
+    root.querySelector('#f-due').addEventListener('change', () => { if (f.thisMonth === null) { keep(); draw(); } });
     bindChips(root, 'freq', v => { keep(); f.freq = Number(v); if (f.freq === 1) f.startMonth = cm; draw(); });
     root.querySelector('#f-save').onclick = () => {
       keep();
       const err = m => { const e = root.querySelector('#f-err'); e.textContent = m; e.hidden = false; };
       if (!f.name.trim()) return err('Beri nama tagihannya.');
       if (!f.amount && !f.variable) return err('Isi jumlah tagihannya.');
-      const doc = { id: b ? b.id : uid('b'), name: f.name.trim(), amount: f.amount, variable: !!f.variable, dueDay: f.dueDay, freq: Number(f.freq), startMonth: Number(f.freq) === 1 ? (b && b.startMonth) || cm : f.startMonth, createdMonth: b ? b.createdMonth || cm : cm, active: true };
+      let start = f.startMonth;
+      if (Number(f.freq) === 1) {
+        if (firstMonthEditable) { const thisM = f.thisMonth === null ? f.dueDay >= dayOf(todayISO()) : f.thisMonth; start = thisM ? cm : shiftM(cm, 1); }
+        else start = (b && b.startMonth) || cm;
+      }
+      const doc = { id: b ? b.id : uid('b'), name: f.name.trim(), amount: f.amount, variable: !!f.variable, dueDay: f.dueDay, freq: Number(f.freq), startMonth: start, createdMonth: b ? b.createdMonth || cm : cm, active: true };
       put('bills', doc); render(); toast(b ? 'Tagihan diperbarui' : 'Tagihan ' + doc.name + ' ditambahkan'); back ? back() : closeSheet();
     };
     if (b) root.querySelector('#f-del').onclick = () => { const s = Object.assign({}, b); del('bills', b.id); render(); toast('Tagihan dihapus', () => put('bills', s)); back ? back() : closeSheet(); };
@@ -1046,11 +1056,20 @@ function showLogin() {
   goBtn.onclick = doLogin; $('lg-pass').addEventListener('keyup', e => { if (e.key === 'Enter') doLogin(); });
   const loc = $('lg-local'); if (loc) loc.onclick = () => { setMode('local'); L.hidden = true; render(); };
 }
+const FIX1_KEY = 'arto_fix_first_month_v1';
+function fixFirstMonthBills() {
+  try { if (localStorage.getItem(FIX1_KEY) === '1') return; } catch (e) {}
+  const cm = curMonth(), today = dayOf(todayISO());
+  const list = S.bills.filter(b => Number(b.freq) === 1 && (b.createdMonth || cm) === cm && (b.startMonth || cm) === cm && dueDayIn(b, cm) < today && !billPaid(b, cm));
+  list.forEach(b => put('bills', Object.assign({}, b, { startMonth: shiftM(cm, 1) })));
+  try { localStorage.setItem(FIX1_KEY, '1'); } catch (e) {}
+  if (list.length) { render(); toast(list.length + ' tagihan yang jatuh temponya sudah lewat dimulai bulan depan'); }
+}
 function stopSync() { unsubs.forEach(u => { try { u(); } catch (e) {} }); unsubs = []; }
 function startSync() {
   stopSync(); cloud.ready = false; $('loading').hidden = false;
   const got = new Set(), need = COLS.length + 1;
-  const done = k => { got.add(k); if (got.size >= need && !cloud.ready) { cloud.ready = true; $('loading').hidden = true; render(); } };
+  const done = k => { got.add(k); if (got.size >= need && !cloud.ready) { cloud.ready = true; $('loading').hidden = true; fixFirstMonthBills(); render(); } };
   const timer = setTimeout(() => { if (!cloud.ready) { cloud.ready = true; $('loading').hidden = true; render(); } }, 9000);
   COLS.forEach(col => unsubs.push(db.collection(col).onSnapshot({ includeMetadataChanges: true }, s => {
     if (!(s.empty && s.metadata.fromCache)) S[col] = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
@@ -1119,7 +1138,15 @@ if (cloud.available) {
     else { if (u) auth.signOut(); cloud.user = null; stopSync(); if (cloud.mode !== 'local') showLogin(); }
   });
 } else if (cloud.mode !== 'local') showLogin();
+if (!cloud.available || cloud.mode === 'local') fixFirstMonthBills();
 setInterval(() => { if (!document.hidden) render(); }, 60000);
+async function checkUpdate() {
+  if (!/^https?:$/.test(location.protocol)) return;
+  try { const r = await fetch('./index.html', { cache: 'no-store' }); if (!r.ok) return; const m = (await r.text()).match(/const APP_VERSION = '([^']+)'/);
+    if (m && m[1] !== APP_VERSION) { const t = $('toast'); t.className = 'toast'; t.innerHTML = '<span>Versi baru Arto tersedia</span><button id="t-reload">Muat ulang</button>'; t.hidden = false; placeToast(); $('t-reload').onclick = () => location.reload(); } } catch (e) {}
+}
+setTimeout(checkUpdate, 4000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.(ai|site)|claudeusercontent/.test(location.hostname)) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
 }
