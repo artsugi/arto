@@ -517,7 +517,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.16';
+const APP_VERSION = '1.16.1';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -530,6 +530,7 @@ const OWNER = 'sugiyarto784@gmail.com';
 // Alamat Web App Google Apps Script "Arto Email" (diisi setelah deploy)
 const MAIL_URL = 'https://script.google.com/macros/s/AKfycbyJSYV-K2iCYM4QjWpPwtRi3bTYd79_i2vYy_yfzwJNO3AvDdRTjLFzphau2Fjt5OEK/exec';
 const CACHE_KEY = 'arto_cache_v1', MODE_KEY = 'arto_mode_v1', PIN_KEY = 'arto_pin_v1', TAB_KEY = 'arto_tab_v1';
+const BIO_KEY = 'arto_biometric_v1', ACTIVITY_KEY = 'arto_last_activity_v1', LOCKED_KEY = 'arto_locked_v1';
 const LOCK_AFTER = 5 * 60 * 1000;
 
 // ================= Ikon =================
@@ -1890,8 +1891,8 @@ function openSettings() {
       <button class="set-row" id="s-plan"><span class="grow"><span class="t1">Rencana tabungan per bulan</span><span class="t2">${S.config.planSave ? rp(S.config.planSave) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button></div>
     ${legacyOpeningMissing(S,true).length ? `<div class="set-label">Perbaikan data lama</div><div class="set-group"><button class="set-row" id="s-legacy-opening"><span class="ico b" style="width:36px;height:36px">${svg('clock')}</span><span class="grow"><span class="t1">Perbaiki tanggal saldo awal</span><span class="t2">${legacyOpeningMissing().length} data lama belum memiliki tanggal saldo awal</span></span><span class="chev">${svg('right',2.6)}</span></button></div>` : ''}
     <div class="set-label">Keamanan di HP ini</div><div class="set-group">
-      <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Diminta setiap Arto dibuka' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
-      ${pinOn ? '<button class="set-row" id="s-pinoff"><span class="grow t1">Matikan PIN</span></button><button class="set-row" id="s-locknow"><span class="grow t1">Kunci sekarang</span></button>' : ''}</div>
+      <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Kunci otomatis setelah 5 menit tanpa aktivitas' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
+      ${pinOn ? `<button class="set-row" id="s-biometric"><span class="ico b" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${getBiometric() ? 'Biometrik aktif' : 'Aktifkan biometrik'}</span><span class="t2">${getBiometric() ? 'Gunakan sidik jari / Face ID / kunci layar perangkat' : 'Buka Arto lebih cepat dengan keamanan perangkat'}</span></span><span class="chev">${svg('right', 2.6)}</span></button><button class="set-row" id="s-pinoff"><span class="grow t1">Matikan PIN</span></button><button class="set-row" id="s-locknow"><span class="grow t1">Kunci sekarang</span></button>` : ''}</div>
     <div class="set-label">Akun</div><div class="set-group">
       <div class="set-row"><span class="ico g" style="width:36px;height:36px">${svg('user')}</span><span class="grow"><span class="t1">${cloud.user ? esc(cloud.user.email) : 'Mode coba'}</span><span class="t2">${cloud.user ? (lastWriteError?'Periksa penyimpanan':pendingWrites||financeBusy||cloud.pending?'Menunggu sinkronisasi':navigator.onLine===false?'Offline - data tersimpan sebelumnya':'Tersinkron') : 'Data hanya di perangkat ini'}</span></span></div>
       ${cloud.user ? '<button class="set-row" id="s-out"><span class="grow t1" style="color:var(--red-ink)">Keluar</span></button>' : '<button class="set-row" id="s-in"><span class="grow t1" style="color:var(--blue)">Masuk ke akun</span></button>'}</div>
@@ -1909,14 +1910,82 @@ function openSettings() {
     root.querySelector('#s-plan').onclick = () => openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".', back);
     const legacyFix = root.querySelector('#s-legacy-opening'); if (legacyFix) legacyFix.onclick = () => openLegacyOpeningFix(back);
     root.querySelector('#s-pin').onclick = () => { closeSheet(); startPin(pinOn ? 'change' : 'new'); };
-    if (pinOn) { root.querySelector('#s-pinoff').onclick = () => { closeSheet(); startPin('off'); }; root.querySelector('#s-locknow').onclick = () => { closeSheet(); showLock(); }; }
+    if (pinOn) {
+      root.querySelector('#s-biometric').onclick = () => getBiometric() ? openBiometricSettings(back) : enableBiometric(back);
+      root.querySelector('#s-pinoff').onclick = () => { closeSheet(); startPin('off'); };
+      root.querySelector('#s-locknow').onclick = () => { closeSheet(); showLock('manual'); };
+    }
     const o = root.querySelector('#s-out'); if (o) o.onclick = () => { closeSheet(); signOut(); };
     const i = root.querySelector('#s-in'); if (i) i.onclick = () => { closeSheet(); setMode('cloud'); showLogin(); };
   });
 }
 
-// ================= PIN (per perangkat) =================
+// ================= PIN & biometrik (per perangkat) =================
 const getPin = () => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || 'null'); } catch (e) { return null; } };
+const getBiometric = () => { try { return JSON.parse(localStorage.getItem(BIO_KEY) || 'null'); } catch (e) { return null; } };
+const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const fromB64url = value => { const p=String(value||'').replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(p+'='.repeat((4-p.length%4)%4)); return Uint8Array.from(raw,c=>c.charCodeAt(0)); };
+const randomBytes = n => { const a=new Uint8Array(n); crypto.getRandomValues(a); return a; };
+async function biometricAvailable() {
+  if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials) return false;
+  try { return !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable || await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch(e) { return false; }
+}
+async function enableBiometric(back) {
+  if (!getPin()) { toast('Pasang PIN terlebih dahulu sebagai cadangan.',null,true); return; }
+  if (!(await biometricAvailable())) { toast('Biometrik perangkat tidak tersedia di browser ini.',null,true); return; }
+  try {
+    const userId=randomBytes(32);
+    const credential=await navigator.credentials.create({publicKey:{
+      challenge:randomBytes(32),rp:{name:'Arto'},user:{id:userId,name:'arto-local',displayName:'Arto'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'preferred',userVerification:'required'},
+      timeout:60000,attestation:'none'
+    }});
+    if(!credential)throw new Error('Biometrik dibatalkan.');
+    localStorage.setItem(BIO_KEY,JSON.stringify({credentialId:b64url(credential.rawId),createdAt:new Date().toISOString()}));
+    markActivity(true); toast('Biometrik diaktifkan'); if(back)back(); else openSettings();
+  } catch(e) {
+    const msg=e&&e.name==='NotAllowedError'?'Pendaftaran biometrik dibatalkan atau tidak diizinkan.':'Biometrik tidak dapat diaktifkan di perangkat ini.';
+    toast(msg,null,true);
+  }
+}
+function openBiometricSettings(back) {
+  openSheet('Biometrik',`<div class="note good">${svg('lock')}<span>Biometrik aktif. Saat Arto terkunci, perangkat dapat meminta sidik jari, Face ID, atau kunci layar sesuai kemampuan perangkat.</span></div><p class="hint">PIN tetap tersedia sebagai metode cadangan.</p><button class="del" id="bio-off">Matikan biometrik</button>`,root=>{
+    root.querySelector('#bio-off').onclick=()=>{localStorage.removeItem(BIO_KEY);closeSheet();toast('Biometrik dimatikan');if(back)back();else openSettings();};
+  },back);
+}
+async function biometricUnlock(silent=false) {
+  const bio=getBiometric(); if(!bio||!getPin()||!$('lock')||$('lock').hidden)return false;
+  if (!(await biometricAvailable())) return false;
+  try {
+    const cred=await navigator.credentials.get({publicKey:{challenge:randomBytes(32),allowCredentials:[{type:'public-key',id:fromB64url(bio.credentialId),transports:['internal']}],userVerification:'required',timeout:60000}});
+    if(!cred)return false;
+    unlockApp(); toast('Arto dibuka'); return true;
+  } catch(e) { if(!silent&&e&&e.name!=='NotAllowedError')toast('Biometrik gagal. Gunakan PIN.',null,true); return false; }
+}
+function lastActivity() { try { return Number(localStorage.getItem(ACTIVITY_KEY))||0; } catch(e) { return 0; } }
+function isStoredLocked() { try { return localStorage.getItem(LOCKED_KEY)==='1'; } catch(e) { return false; } }
+function markActivity(force=false) {
+  if (!getPin()) return;
+  const L=$('lock'); if (!force && L && !L.hidden) return;
+  const now=Date.now(),last=lastActivity(); if(force||now-last>5000){try{localStorage.setItem(ACTIVITY_KEY,String(now));}catch(e){}}
+}
+function unlockApp() {
+  const L=$('lock'); if(L)L.hidden=true;
+  try{localStorage.removeItem(LOCKED_KEY);}catch(e){}
+  markActivity(true);
+}
+function lockRequired() { const last=lastActivity(); return isStoredLocked() || !last || Date.now()-last>=LOCK_AFTER; }
+function checkInactivityLock() {
+  if(!getPin())return; const L=$('lock'); if(L&&!L.hidden)return;
+  if(lockRequired())showLock('inactivity');
+}
+let activityBound=false;
+function bindActivityTracking(){
+  if(activityBound)return;activityBound=true;
+  ['pointerdown','keydown','touchstart','scroll'].forEach(ev=>document.addEventListener(ev,()=>markActivity(),{passive:true,capture:true}));
+  setInterval(checkInactivityLock,15000);
+}
 async function hashPin(salt, pin) {
   const t = salt + ':' + pin;
   if (window.crypto && crypto.subtle) { try { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) {} }
@@ -1929,15 +1998,16 @@ function drawPin(title, hint, err) {
     <div style="text-align:center"><div class="brand" style="margin:0 auto">${svg('lock', 2.2).replace('<svg', '<svg width="28" height="28"')}</div><h1 style="font-size:24px">${title}</h1><p id="p-hint" style="${err ? 'color:var(--red-ink);font-weight:700' : ''}">${hint}</p>
       <div class="pin-dots" id="p-dots">${[0, 1, 2, 3].map(i => `<i class="${pinState.entry.length > i ? 'on' : ''}"></i>`).join('')}</div></div>
     <div><div class="keys">${['1','2','3','4','5','6','7','8','9'].map(k => `<button data-k="${k}">${k}</button>`).join('')}<span></span><button data-k="0">0</button><button class="plain" data-k="del" aria-label="Hapus angka">⌫</button></div>
-      ${pinState.mode === 'unlock' ? '<p style="text-align:center;margin-top:18px"><button class="link" id="p-forgot">Lupa PIN?</button></p>' : ''}</div></div>`;
+      ${pinState.mode === 'unlock' ? `<div style="text-align:center;margin-top:18px">${getBiometric()?'<button class="bar-btn main" id="p-biometric" style="max-width:260px;margin:0 auto 10px">'+svg('lock')+'Buka dengan biometrik</button>':''}<button class="link" id="p-forgot">Lupa PIN?</button></div>` : ''}</div></div>`;
   L.hidden = false;
   L.querySelectorAll('[data-k]').forEach(b => b.onclick = () => pinKey(b.dataset.k));
   const c = $('p-cancel'); if (c) c.onclick = () => { L.hidden = true; };
+  const bio = $('p-biometric'); if (bio) bio.onclick = () => biometricUnlock(false);
   const fg = $('p-forgot'); if (fg) fg.onclick = forgotPin;
 }
 const PIN_TEXT = { unlock: ['Arto terkunci', 'Masukkan PIN'], verify: ['Masukkan PIN lama', 'Untuk melanjutkan'], new1: ['Buat PIN baru', '4 angka yang mudah kamu ingat'], new2: ['Ulangi PIN baru', 'Ketik sekali lagi'], off: ['Masukkan PIN', 'Untuk mematikan PIN'] };
 function pinScreen(err) { const [t, h] = PIN_TEXT[pinState.mode]; drawPin(t, err || h, !!err); }
-function showLock() { if (!getPin()) return; Object.assign(pinState, { mode: 'unlock', entry: '' }); pinScreen(); }
+function showLock(reason='manual') { if (!getPin()) return; try{localStorage.setItem(LOCKED_KEY,'1');}catch(e){} Object.assign(pinState, { mode: 'unlock', entry: '' }); pinScreen(); if(getBiometric())setTimeout(()=>biometricUnlock(true),120); }
 function startPin(kind) { Object.assign(pinState, { entry: '', first: '', mode: kind === 'new' ? 'new1' : kind === 'off' ? 'off' : 'verify' }); pinScreen(); }
 async function pinKey(k) {
   if (pinState.busy) return;
@@ -1957,8 +2027,8 @@ async function pinKey(k) {
         const d = $('p-dots'); if (d) d.classList.add('shake'); return;
       }
       pinState.fails = 0;
-      if (pinState.mode === 'unlock') { $('lock').hidden = true; return; }
-      if (pinState.mode === 'off') { localStorage.removeItem(PIN_KEY); $('lock').hidden = true; toast('PIN dimatikan'); return; }
+      if (pinState.mode === 'unlock') { unlockApp(); return; }
+      if (pinState.mode === 'off') { localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY); localStorage.removeItem(LOCKED_KEY); localStorage.removeItem(ACTIVITY_KEY); $('lock').hidden = true; toast('PIN dan biometrik dimatikan'); return; }
       Object.assign(pinState, { mode: 'new1', entry: '' }); return pinScreen();
     }
     if (pinState.mode === 'new1') { Object.assign(pinState, { first: pin, mode: 'new2', entry: '' }); return pinScreen(); }
@@ -1966,7 +2036,7 @@ async function pinKey(k) {
       if (pin !== pinState.first) { Object.assign(pinState, { mode: 'new1', entry: '', first: '' }); return pinScreen('PIN tidak sama. Silakan buat ulang.'); }
       const salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x => x.toString(16).padStart(2, '0')).join('');
       localStorage.setItem(PIN_KEY, JSON.stringify({ salt, hash: await hashPin(salt, pin) }));
-      $('lock').hidden = true; toast('PIN terpasang');
+      unlockApp(); toast('PIN terpasang');
     }
   } finally { pinState.busy = false; }
 }
@@ -1978,15 +2048,14 @@ function forgotPin() {
   $('fp-back').onclick = showLock;
   const go2 = $('fp-go');
   if (go2) go2.onclick = () => {
-    auth.signInWithEmailAndPassword(cloud.user.email, $('fp-pass').value).then(() => { localStorage.removeItem(PIN_KEY); L.hidden = true; toast('PIN dimatikan. Buat yang baru di Pengaturan.'); })
+    auth.signInWithEmailAndPassword(cloud.user.email, $('fp-pass').value).then(() => { localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY); localStorage.removeItem(LOCKED_KEY); localStorage.removeItem(ACTIVITY_KEY); L.hidden = true; toast('PIN dan biometrik dimatikan. Buat PIN baru di Pengaturan.'); })
       .catch(e => { const er = $('fp-err'); er.textContent = loginError(e && e.code); er.hidden = false; });
   };
 }
-let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (getPin() && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER && $('lock').hidden) showLock();
-  hiddenAt = 0; render();
+  if (document.hidden) return;
+  checkInactivityLock();
+  render();
 });
 
 // ================= Akun & sinkron =================
@@ -2230,7 +2299,8 @@ const NAV = { home: ['home', 'Beranda'], pokok: ['check', 'Tagihan'], harian: ['
 document.querySelectorAll('.nav .tab').forEach(b => { const [ic, n] = NAV[b.dataset.go]; b.innerHTML = svg(ic) + n; });
 render();
 try { const t = localStorage.getItem(TAB_KEY); if (t && $(t)) go(t); } catch (e) {}
-if (getPin()) showLock();
+bindActivityTracking();
+if (getPin()) { if (lockRequired()) showLock('startup'); else markActivity(true); }
 if (cloud.available) {
   auth.onAuthStateChanged(u => {
     if (u && u.email && u.email.toLowerCase() === OWNER) { cloud.user = { email: u.email }; setMode('cloud'); $('login').hidden = true; startSync(); }
