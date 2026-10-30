@@ -490,7 +490,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.15';
+const APP_VERSION = '1.15.1';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -1171,7 +1171,7 @@ function renderRiwayat(){
  <div class="sec"><h2>Arus kas</h2><span>${periodName(key)}</span></div><div class="ledger"><div class="lg total"><span>Selisih masuk - keluar</span><b class="num">${rp(st.income-st.out)}</b></div><div class="lg"><span>Uang masuk</span><b class="num">+${fmt(st.income)}</b></div><div class="lg"><span>Uang keluar</span><b class="num">-${fmt(st.out)}</b></div></div>
  ${year?`<div class="sec"><h2>Ringkasan per bulan</h2><span>${key}</span></div><div class="list">${series.map(v=>`<button class="row annual-month" data-reportmonth="${v.month}" ${v.future?'disabled':''}><span class="grow"><span class="t1">${MONTHS[Number(v.month.slice(5))-1]}</span><span class="t2">${v.future?'Belum berjalan':!v.count?'Belum ada transaksi tercatat':'Masuk '+rp(v.income)+'<br>Keluar '+rp(v.out)}</span></span><span class="amt num">${v.future?'-':rp(v.net)}<span class="edit-hint">${v.future?'':'Lihat bulan'}</span></span></button>`).join('')}</div>`:''}
  <details class="report-details" id="detail-reconcile"><summary>Perubahan saldo dompet</summary><div class="ledger"><div class="lg total"><span>Saldo akhir</span><b>${rp(st.closing)}</b></div>${[['Saldo awal',st.opening],['Saldo awal ditambahkan',st.openingAdded],['Uang masuk',st.income],['Uang keluar',-st.out],['Ditabung',-st.savedIn],['Diambil',st.savedOut],['Penyesuaian',st.adjust]].map(([n,v])=>`<div class="lg"><span>${n}</span><b class="num">${rp(v)}</b></div>`).join('')}</div></details>
- ${snap.warnings.length?`<div class="note warn">${svg('warn')}<span>${snap.warnings.map(esc).join('<br>')}</span></div>`:''}${spendingBreakdown(st.T)}
+ ${snap.warnings.length?`<div class="note warn">${svg('warn')}<span>${snap.warnings.map(esc).join('<br>')}</span></div>`:''}${legacyOpeningMissing().length?`<button class="bar-btn" data-act="legacy-opening-fix">${svg('clock')}Perbaiki tanggal saldo awal</button>`:''}${spendingBreakdown(st.T)}
  ${year?'':`<div class="sec"><h2>Transaksi ${mShort(key)}</h2><button class="link" data-reportactivity="true">Lihat semua</button></div><div class="seg" role="group" aria-label="Saring catatan">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['save','Tabungan']].map(([k,n])=>`<button aria-pressed="${filter===k}" data-f="${k}">${n}</button>`).join('')}</div>${shown.length?groupByDay(byDate(shown).slice(0,10)):'<div class="empty">Belum ada transaksi untuk pilihan ini.</div>'}`}
  </div>`;
 }
@@ -1784,6 +1784,39 @@ function openNumberSetting(key, title, hintText, back) {
   }, back);
 }
 
+// ---- Perbaikan data lama: saldo awal tanpa tanggal ----
+function legacyOpeningMissing(data=S) {
+  const rows=[];
+  (data.wallets||[]).forEach(w=>{ if(Number(w.initial)&&!ArtoModel.validDate(w.initialDate)) rows.push({col:'wallets',id:w.id,name:w.name,kind:'Dompet',amount:Number(w.initial)||0}); });
+  (data.goals||[]).forEach(g=>{ if(Number(g.initial)&&!ArtoModel.validDate(g.initialDate)) rows.push({col:'goals',id:g.id,name:g.name,kind:'Tabungan',amount:Number(g.initial)||0}); });
+  return rows;
+}
+function openLegacyOpeningFix(back) {
+  const items=legacyOpeningMissing();
+  if(!items.length){
+    openSheet('Perbaiki data lama',`<div class="note good">${svg('good')}<span>Semua saldo awal sudah memiliki tanggal. Tidak ada data yang perlu diperbaiki.</span></div><button class="save" id="legacy-done">Selesai</button>`,root=>{root.querySelector('#legacy-done').onclick=()=>back?back():closeSheet();},back);
+    return;
+  }
+  const rows=items.map((x,i)=>`<div class="set-group" style="margin-top:${i?'10':'0'}px"><div class="set-row" style="align-items:flex-start"><span class="ico ${x.col==='wallets'?'g':'s'}" style="width:36px;height:36px">${svg(x.col==='wallets'?'wallet':'jar')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${x.kind} · Saldo awal ${rp(x.amount)}</span><label for="legacy-date-${i}" class="t2" style="display:block;margin-top:10px;color:var(--ink);font-weight:700">Tanggal saldo awal berlaku</label><input type="date" class="sel" id="legacy-date-${i}" max="${todayISO()}" style="margin-top:6px;width:100%"></span></div></div>`).join('');
+  openSheet('Perbaiki data lama',`<p class="hint" style="margin-top:0">Pilih tanggal ketika saldo awal ini mulai berlaku. Jumlah saldo tidak akan diubah. Laporan sebelum tanggal tersebut tidak akan memasukkan saldo awal ini.</p>${rows}<p class="err" id="f-err" hidden></p><button class="save" id="legacy-save">Simpan perbaikan</button>`,root=>{
+    root.querySelector('#legacy-save').onclick=async()=>{
+      const err=root.querySelector('#f-err'),dates=items.map((_,i)=>root.querySelector('#legacy-date-'+i).value);
+      if(dates.some(d=>!ArtoModel.validDate(d)||d>todayISO())){err.textContent='Pilih tanggal saldo awal yang valid untuk semua data.';err.hidden=false;return;}
+      const btn=root.querySelector('#legacy-save'),label=btn.textContent;btn.disabled=true;btn.textContent='Menyimpan...';err.hidden=true;
+      try{
+        const undo=await commitFinancial(data=>items.map((x,i)=>{
+          const cur=(data[x.col]||[]).find(v=>v.id===x.id);
+          if(!cur)throw new Error(x.name+' tidak ditemukan. Buka ulang perbaikan data lama.');
+          if(Number(cur.initial)!==Number(x.amount)||ArtoModel.validDate(cur.initialDate))throw new Error(x.name+' sudah berubah. Buka ulang perbaikan data lama.');
+          return {col:x.col,id:x.id,doc:Object.assign({},cur,{initialDate:dates[i],openingDateUpdatedAt:new Date().toISOString()})};
+        }));
+        render();closeSheet();toast('Tanggal saldo awal diperbaiki',undo);if(back)back();
+      }catch(e){err.textContent=e.message||'Gagal menyimpan perbaikan.';err.hidden=false;}
+      finally{if(btn.isConnected){btn.disabled=false;btn.textContent=label;}}
+    };
+  },back);
+}
+
 // ---- Pengaturan ----
 function openSettings() {
   const pinOn = !!getPin();
@@ -1794,6 +1827,7 @@ function openSettings() {
     <div class="set-label">Batas & rencana</div><div class="set-group">
       <button class="set-row" id="s-limit"><span class="grow"><span class="t1">Batas Harian per bulan</span><span class="t2">${S.config.limit ? rp(S.config.limit) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       <button class="set-row" id="s-plan"><span class="grow"><span class="t1">Rencana tabungan per bulan</span><span class="t2">${S.config.planSave ? rp(S.config.planSave) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button></div>
+    ${legacyOpeningMissing().length ? `<div class="set-label">Perbaikan data lama</div><div class="set-group"><button class="set-row" id="s-legacy-opening"><span class="ico b" style="width:36px;height:36px">${svg('clock')}</span><span class="grow"><span class="t1">Perbaiki tanggal saldo awal</span><span class="t2">${legacyOpeningMissing().length} data lama belum memiliki tanggal saldo awal</span></span><span class="chev">${svg('right',2.6)}</span></button></div>` : ''}
     <div class="set-label">Keamanan di HP ini</div><div class="set-group">
       <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Diminta setiap Arto dibuka' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       ${pinOn ? '<button class="set-row" id="s-pinoff"><span class="grow t1">Matikan PIN</span></button><button class="set-row" id="s-locknow"><span class="grow t1">Kunci sekarang</span></button>' : ''}</div>
@@ -1812,6 +1846,7 @@ function openSettings() {
     root.querySelector('#s-categories').onclick = () => openCategoryManager(back);
     root.querySelector('#s-limit').onclick = () => openNumberSetting('limit', 'Batas Harian', 'Anggaran untuk kategori Harian saja. Kategori lain tidak mengurangi anggaran ini.', back);
     root.querySelector('#s-plan').onclick = () => openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".', back);
+    const legacyFix = root.querySelector('#s-legacy-opening'); if (legacyFix) legacyFix.onclick = () => openLegacyOpeningFix(back);
     root.querySelector('#s-pin').onclick = () => { closeSheet(); startPin(pinOn ? 'change' : 'new'); };
     if (pinOn) { root.querySelector('#s-pinoff').onclick = () => { closeSheet(); startPin('off'); }; root.querySelector('#s-locknow').onclick = () => { closeSheet(); showLock(); }; }
     const o = root.querySelector('#s-out'); if (o) o.onclick = () => { closeSheet(); signOut(); };
@@ -1990,6 +2025,7 @@ document.addEventListener('click', e => {
   else if (d.act === 'categories') openCategoryManager();
   else if (d.act === 'limit') openNumberSetting('limit', 'Batas Harian', 'Anggaran untuk kategori Harian saja. Kategori lain tidak mengurangi anggaran ini.');
   else if (d.act === 'plan') openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".');
+  else if (d.act === 'legacy-opening-fix') openLegacyOpeningFix();
   else if (d.act === 'share') shareReport();
   else if (d.act === 'mail') mailReport(t);
 });
