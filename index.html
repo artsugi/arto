@@ -64,7 +64,21 @@
   .hero .cap { font-size: 14px; font-weight: 700; font-style: italic; color: #D7DEFB; }
   .hero .big { font-size: clamp(30px, 10vw, 40px); font-weight: 800; line-height: 1.08; margin-top: 2px; white-space: nowrap; }
   .hero .sub { margin-top: 6px; font-size: 13.5px; color: #E3E8FC; font-weight: 500; }
-  .flow3 { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .budget-card { margin-top: 12px; width: 100%; text-align: left; background: var(--card); border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .budget-card.empty { flex-direction: row; align-items: center; gap: 12px; }
+  .budget-card.empty > svg { width: 22px; height: 22px; color: var(--red); flex-shrink: 0; }
+  .budget-card.empty b { display: block; font-size: 15px; font-weight: 800; }
+  .budget-card.empty small { display: block; font-size: 13px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .budget-card.empty > svg:last-child { width: 14px; height: 14px; color: var(--muted); }
+  .bc-top { display: flex; justify-content: space-between; align-items: center; }
+  .bc-name { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 800; font-style: italic; }
+  .bc-pct { font-size: 13px; font-weight: 800; color: var(--red-ink); }
+  .budget-card > b { font-size: 24px; font-weight: 800; white-space: nowrap; }
+  .budget-card.over > b { color: var(--red-ink); }
+  .bc-bar { display: block; height: 8px; border-radius: 4px; background: var(--red-soft); overflow: hidden; }
+  .bc-bar i { display: block; height: 100%; border-radius: 4px; background: var(--red); }
+  .budget-card > small { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .flow3 { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .total-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.18); display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13.5px; color: #E3E8FC; font-weight: 600; }
   .total-row b { font-size: 17px; font-weight: 800; color: #fff; white-space: nowrap; }
   .fb { background: rgba(255,255,255,.1); border-radius: 16px; padding: 10px 12px; }
@@ -184,6 +198,19 @@
   .gbtn.main { background: var(--ink); color: #fff; border-color: var(--ink); }
 
   .mnav { margin-top: 14px; display: flex; align-items: center; gap: 8px; }
+  button.mlabel { cursor: pointer; }
+  .period-note { margin-top: 10px; background: var(--card); border-radius: 18px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .mp-year { display: flex; align-items: center; justify-content: space-between; background: var(--bg-2); border-radius: 999px; padding: 4px; }
+  .mp-year button { width: 40px; height: 40px; border-radius: 50%; background: var(--card); display: grid; place-items: center; color: var(--muted); }
+  .mp-year button svg { width: 16px; height: 16px; }
+  .mp-year button:disabled { opacity: .3; }
+  .mp-year b { font-size: 18px; font-weight: 800; }
+  .mp-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mp-grid button { position: relative; height: 48px; border-radius: 16px; background: var(--bg-2); font-weight: 700; font-size: 14px; }
+  .mp-grid button.now { background: var(--blue-soft); color: var(--blue); }
+  .mp-grid button.on { background: var(--blue); color: #fff; }
+  .mp-grid button:disabled { opacity: .3; }
+  .mp-grid button i { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--blue); }
   .mbtn { width: 46px; height: 46px; border-radius: 50%; background: var(--card); display: grid; place-items: center; flex-shrink: 0; }
   .mbtn svg { width: 18px; height: 18px; }
   .mbtn:disabled { opacity: .3; }
@@ -490,7 +517,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.15.1';
+const APP_VERSION = '1.16';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -1042,22 +1069,32 @@ function renderHome() {
   }
   const pend = pendingIncomes(), total = savingsUpTo(), unknownBills=o.ob.filter(q=>q.status.unknown).length;
   el.innerHTML = `<div class="hero"><div class="cap">Bisa dipakai</div><div class="big num">${rp(o.free)}</div>
-    <div class="flow3"><div class="fb"><small>Masuk bulan ini</small><b class="num">${short(o.st.income)}</b></div><div class="fb"><small>Keluar bulan ini</small><b class="num">${short(o.st.out)}</b></div><div class="fb"><small>Saldo dompet</small><b class="num">${short(o.bal)}</b></div></div>
+    <div class="flow3"><div class="fb"><small>Masuk bulan ini</small><b class="num">${short(o.st.income)}</b></div><div class="fb"><small>Keluar bulan ini</small><b class="num">${short(o.st.out)}</b></div></div>
     </div>
     ${unknownBills?`<button class="note warn" data-go="pokok" style="width:100%;text-align:left">${svg('warn')}<span>${unknownBills} tagihan belum memiliki jumlah. Bisa dipakai belum memperhitungkan jumlah yang belum diketahui.</span></button>`:''}
     ${(() => { const up = upcomingBills(SOON_DAYS); if (!up.length) return ''; const tot = sum(up, x => x.remaining);
       return `<button class="note warn" data-go="pokok" style="width:100%;text-align:left">${svg('warn')}<span>${up.length} tagihan jatuh tempo dalam ${SOON_DAYS} hari ke depan, total ${rp(tot)}. Sisa setelah dibayar ${rp(o.free - sum(up.filter(x => x.m !== o.m), x => x.remaining))}.</span></button>`; })()}
     ${pend.length ? `<div class="pending"><h3>Menunggu konfirmasi</h3>${pend.map(t => `<div class="row"><span class="grow"><span class="t1">${esc(t.name)}</span><span class="t2">${rp(t.amount)} ke ${esc(walletName(t.wallet))}</span></span><button class="ghost" data-incedit="${t.id}">Ubah</button><button class="pay" data-incok="${t.id}">Sudah masuk</button></div>`).join('')}</div>` : ''}
-    <div class="sec"><h2>Dompet</h2><button class="link" data-act="wallets">Kelola</button></div>
-    <div class="wallets">${activeWallets().map(w => `<button class="wcard" data-wallet="${w.id}"><small>${svg('wallet')}${esc(w.name)}</small><b class="num">${rp(walletBal(w))}</b></button>`).join('')}<button class="wcard add" data-act="wallet-new">${svg('plus',2.4)}Dompet</button></div>
+    ${harianBudgetCard()}
     <div class="sec"><h2>Tagihan terdekat</h2><button class="link" data-go="pokok">Semua</button></div>
     <div class="list">${(() => { const late = o.ob.filter(x => x.m < o.m || daysBetween(todayISO(), dueDate(x.b,x.m)) < 0); const soon = upcomingBills(SOON_DAYS).filter(x => !late.some(l => l.b.id === x.b.id && l.m === x.m)); const show = late.concat(soon);
       if (show.length) return show.slice(0,5).map(billRow).join('');
       const next = upcomingBills(62)[0];
       return `<div class="empty">${!S.bills.length ? 'Belum ada tagihan. Tambahkan di halaman Tagihan.' : next ? 'Tidak ada tagihan dalam ' + SOON_DAYS + ' hari ke depan. Berikutnya: ' + esc(next.b.name) + ', ' + dShort(dueDate(next.b,next.m)) + '.' : 'Tidak ada tagihan terjadwal dalam waktu dekat.'}</div>`; })()}</div>
-    <div class="sec"><h2>Tabungan</h2><button class="link" data-go="tabung">Kelola</button></div><button class="row list" data-go="tabung"><span class="ico s">${svg('jar')}</span><span class="grow"><span class="t1">Total tabungan</span><span class="t2">${S.goals.length} tujuan</span></span><span class="amt num">${rp(total)}</span></button>
     <section id="home-activity" class="home-activity" aria-labelledby="home-activity-title">${homeFlowSection()}</section>
 `;
+}
+// Anggaran Harian di Beranda: pengingat utama untuk menahan jajan
+function harianSpentIn(m){ return sum(txIn(m).filter(x=>isExpense(x)&&categoryOf(x).id==='harian')); }
+function harianBudgetCard(){
+  const lim=Number(S.config.limit)||0, m=curMonth();
+  if(!lim) return `<button class="budget-card empty" data-act="limit">${svg('bag')}<span class="grow"><b>Atur anggaran Harian</b><small>Batas jajan per bulan supaya pengeluaran harian tetap terkendali.</small></span>${svg('right',2.4)}</button>`;
+  const spent=harianSpentIn(m), left=lim-spent, rest=daysIn(m)-dayOf(todayISO())+1, pct=Math.min(100,spent/lim*100), over=left<0;
+  return `<button class="budget-card${over?' over':''}" data-harianbudget="true" aria-label="Anggaran Harian, lihat rincian">
+    <span class="bc-top"><span class="bc-name"><i class="dot" style="background:var(--red)"></i>Anggaran Harian</span><span class="bc-pct num">${Math.round(spent/lim*100)}%</span></span>
+    <b class="num">${over?'Lewat '+rp(-left):rp(left)}</b>
+    <span class="bc-bar"><i style="width:${pct}%"></i></span>
+    <small>Terpakai ${rp(spent)} dari ${rp(lim)}${!over?', aman '+rp(Math.floor(left/rest/1000)*1000)+' per hari':''}</small></button>`;
 }
 function homeFlowSection() {
   const kind = homeFlowFilter, arr = recentActivity(kind,10), shown = arr.slice(0,3);
@@ -1088,7 +1125,29 @@ document.addEventListener('keydown',e=>{
 });
 
 let billMonthView=null,expenseMonth=null,expenseCategory='all';
-function periodNav(m,attr,allowFuture=false){const cm=curMonth(),first=firstMonth();return `<div class="mnav"><button class="mbtn" data-${attr}="-1" aria-label="Bulan sebelumnya" ${m<=first?'disabled':''}>${svg('left',2.4)}</button><div class="mlabel"><b>${mLabel(m)}</b>${m===cm?'<span class="now">Bulan ini</span>':''}</div><button class="mbtn" data-${attr}="1" aria-label="Bulan berikutnya" ${!allowFuture&&m>=cm?'disabled':''}>${svg('right',2.4)}</button></div>`;}
+function periodNav(m,attr,allowFuture=false){const cm=curMonth(),first=firstMonth();return `<div class="mnav"><button class="mbtn" data-${attr}="-1" aria-label="Bulan sebelumnya" ${m<=first?'disabled':''}>${svg('left',2.4)}</button><button class="mlabel" data-pickperiod="${attr}" aria-label="Pilih bulan, sekarang ${mLabel(m)}"><b>${mLabel(m)}</b>${m===cm?'<span class="now">Bulan ini</span>':''}</button><button class="mbtn" data-${attr}="1" aria-label="Bulan berikutnya" ${!allowFuture&&m>=cm?'disabled':''}>${svg('right',2.4)}</button></div>${m!==cm?`<div class="period-note"><span>${m>cm?'Melihat bulan mendatang':'Melihat bulan lalu'}</span><button class="link" data-${attr}="now">Kembali ke bulan ini</button></div>`:''}`;}
+// Pemilih periode bergaya Belanja Kita: navigasi tahun + kisi 12 bulan, titik menandai bulan yang ada catatannya
+function openPeriodPicker(o){
+  const cm=curMonth(), cy=Number(cm.slice(0,4)), first=firstMonth()||cm, fy=Math.min(Number(first.slice(0,4)),cy);
+  const months=new Set(S.tx.map(x=>x.month).filter(Boolean));
+  if(o.mode==='year'){
+    const years=[]; for(let y=cy;y>=fy;y--) years.push(String(y));
+    openSheet('Lihat tahun',`<div class="mp-grid">${years.map(y=>`<button data-y="${y}" class="${y===o.value?'on':y===String(cy)?'now':''}">${y}${y!==o.value&&[...months].some(m=>m.startsWith(y))?'<i></i>':''}</button>`).join('')}</div><p class="hint">Titik biru menandai tahun yang memiliki catatan.</p>`,root=>{
+      root.querySelectorAll('[data-y]').forEach(b=>b.onclick=()=>{closeSheet();o.onPick(b.dataset.y);});
+    });
+    return;
+  }
+  const maxM=o.allowFuture?shiftM(cm,12):cm, minM=first<cm?first:cm;
+  let year=Number((o.value||cm).slice(0,4));
+  const draw=()=>openSheet('Lihat bulan',`<div class="mp-year"><button id="mp-prev" aria-label="Tahun sebelumnya" ${year<=Number(minM.slice(0,4))?'disabled':''}>${svg('left',2.4)}</button><b class="num">${year}</b><button id="mp-next" aria-label="Tahun berikutnya" ${String(year+1)+'-01'>maxM?'disabled':''}>${svg('right',2.4)}</button></div>
+    <div class="mp-grid">${MONTHS.map((n,i)=>{const m=year+'-'+pad2(i+1),dis=m>maxM||m<minM;return `<button data-m="${m}" class="${m===o.value?'on':m===cm?'now':''}" ${dis?'disabled':''} aria-label="${n} ${year}">${n.slice(0,3)}${months.has(m)&&m!==o.value?'<i></i>':''}</button>`;}).join('')}</div>
+    <p class="hint">Titik biru menandai bulan yang memiliki catatan.</p>`,root=>{
+      root.querySelector('#mp-prev').onclick=()=>{year--;draw();};
+      root.querySelector('#mp-next').onclick=()=>{year++;draw();};
+      root.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{closeSheet();o.onPick(b.dataset.m);});
+    });
+  draw();
+}
 function renderPokok(){
  const cm=curMonth(),m=billMonthView||cm;billMonthView=m;
  const due=S.bills.filter(b=>billDue(b,m)),states=due.map(b=>({b,m,status:billState(b,m)})),active=states.filter(o=>!o.status.cancelled);
@@ -1116,7 +1175,7 @@ function renderHarian(){
  $('harian').innerHTML=`<h1 class="title">Pengeluaran</h1>${periodNav(m,'expensemonth')}
  <div class="lead red"><div class="grow"><div class="cap">${category?esc(category.name):'Semua kategori'} - ${mShort(m)}</div><div class="big num">${rp(spent)}</div><div class="sub">${H.length} transaksi pengeluaran tercatat</div></div></div>
  <div class="field"><label for="expense-category">Kategori</label><select class="sel" id="expense-category" data-artoselect data-icon="bag"><option value="all" ${expenseCategory==='all'?'selected':''}>Semua kategori</option>${allCats().map(c=>`<option value="${esc(c.id)}" data-icon="${esc(c.icon)}" ${expenseCategory===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
- ${expenseCategory==='harian'?`<div class="sec"><h2>Anggaran Harian</h2><button class="link" data-act="limit">${lim?'Ubah':'Atur'}</button></div><div class="list"><div class="asset-summary"><small>${lim?'Sisa anggaran Harian':'Belum ada anggaran bulanan'}</small><b class="num">${lim?rp(left):'-'}</b></div>${lim?`<div class="row"><span class="grow"><span class="t2">Terpakai ${rp(spent)} dari ${rp(lim)}</span>${isNow?`<span class="t2">Sisa anggaran per hari ${rp(Math.max(0,left)/remainingDays)}</span>`:''}</span></div>`:''}</div>`:''}
+ ${expenseCategory==='harian'||expenseCategory==='all'?`<div class="sec"><h2>Anggaran Harian</h2><button class="link" data-act="limit">${lim?'Ubah':'Atur'}</button></div><div class="list"><div class="asset-summary"><small>${lim?'Sisa anggaran Harian':'Belum ada anggaran bulanan'}</small><b class="num">${lim?rp(lim-harianSpentIn(m)):'-'}</b></div>${lim?`<div class="row"><span class="grow"><span class="t2">Terpakai ${rp(harianSpentIn(m))} dari ${rp(lim)}${expenseCategory==='all'?', khusus kategori Harian':''}</span>${isNow?`<span class="t2">Sisa anggaran per hari ${rp(Math.max(0,lim-harianSpentIn(m))/remainingDays)}</span>`:''}</span></div>`:''}</div>`:''}
  <div class="sec"><h2>Catat cepat</h2><button class="link" data-act="categories">Kategori</button></div><div class="chips">${presets.slice(0,6).map(name=>{const cat=category?category.id:name==='Bensin'?'transportasi':name==='Obat'?'kesehatan':'harian';return `<button class="chip" data-newexpense="${esc(cat)}" data-description="${esc(name)}">${svg(cat==='harian'?'bag':catOf(cat).icon)}${esc(name)}</button>`;}).join('')}<button class="chip" data-newexpense="${category?esc(category.id):'harian'}">${svg('plus')}Isi manual</button></div>
  <div class="stats"><div class="stat"><small>${isNow?'Hari ini':'Transaksi'}</small><b class="num">${isNow?short(sum(H.filter(x=>x.date===todayISO()))):H.length}</b></div><div class="stat"><small>Rata-rata tercatat</small><b class="num">${short(spent/day)}/hari</b></div><div class="stat"><small>Kategori</small><b>${expenseCategory==='all'?expenseGroups(H).length:1}</b></div></div>
  ${expenseCategory==='harian'&&isNow&&spent?`<p class="hint">Perkiraan berdasarkan transaksi tercatat: ${rp(Math.round(spent/day*daysIn(m)))} pada akhir bulan. Hari tanpa catatan bukan bukti tidak ada pengeluaran.</p>`:''}
@@ -1162,7 +1221,7 @@ function renderRiwayat(){
  <div class="seg home-flow-tabs" role="tablist" aria-label="Periode laporan">${[['month','Bulanan'],['year','Tahunan']].map(([k,n])=>`<button role="tab" id="report-tab-${k}" aria-selected="${reportMode===k}" aria-pressed="${reportMode===k}" aria-controls="report-panel" tabindex="${reportMode===k?0:-1}" data-reportmode="${k}">${n}</button>`).join('')}</div>
  <div id="report-panel" role="tabpanel" aria-labelledby="report-tab-${reportMode}">
  ${reportFromYear&&!year?`<button class="inline-back" data-backyear="true">${svg('left')}Kembali ke ${rYear}</button>`:''}
- <div class="mnav"><button class="mbtn" data-rm="-1" aria-label="Periode sebelumnya" ${key<=(year?firstMonth().slice(0,4):firstMonth())?'disabled':''}>${svg('left',2.4)}</button><button class="mlabel" data-pickreport="true"><b>${periodName(key)}</b>${isNow?`<span class="now">${year?'Tahun':'Bulan'} berjalan</span>`:''}</button><button class="mbtn" data-rm="1" aria-label="Periode berikutnya" ${isNow?'disabled':''}>${svg('right',2.4)}</button></div>
+ <div class="mnav"><button class="mbtn" data-rm="-1" aria-label="Periode sebelumnya" ${key<=(year?firstMonth().slice(0,4):firstMonth())?'disabled':''}>${svg('left',2.4)}</button><button class="mlabel" data-pickreport="true"><b>${periodName(key)}</b>${isNow?`<span class="now">${year?'Tahun':'Bulan'} berjalan</span>`:''}</button><button class="mbtn" data-rm="1" aria-label="Periode berikutnya" ${isNow?'disabled':''}>${svg('right',2.4)}</button></div>${isNow?'':`<div class="period-note"><span>${year?'Melihat tahun lalu':'Melihat bulan lalu'}</span><button class="link" data-rm="now">${year?'Kembali ke tahun ini':'Kembali ke bulan ini'}</button></div>`}
  <div class="hero asset-hero"><div class="cap">Total aset ${isNow?'sekarang':year?'akhir tahun':'akhir bulan'}</div><div class="big num">${rp(snap.total)}</div><div class="flow3"><div class="fb"><small>Dompet</small><b class="num">${rp(snap.walletTotal)}</b></div><div class="fb"><small>Tabungan</small><b class="num">${rp(snap.goalTotal)}</b></div><div class="fb"><small>Uang masuk ${year?key:isNow?'bulan ini':mShort(key)}</small><b class="num">${rp(st.income)}</b></div><div class="fb"><small>Uang keluar ${year?key:isNow?'bulan ini':mShort(key)}</small><b class="num">${rp(st.out)}</b></div></div></div>
  <div class="rep-btns">${MAIL_URL&&cloud.user?`<button class="bar-btn main" data-act="mail">${svg('mail')}Email</button>`:''}<button class="bar-btn" data-act="share">${svg('share')}Bagikan</button><button class="bar-btn" data-reportactivity="true">${svg('clock')}Aktivitas</button></div>
  ${!st.T.length?'<div class="note good">Tidak ada transaksi tercatat pada periode ini. Saldo tetap ditampilkan.</div>':''}
@@ -1406,7 +1465,7 @@ function descriptionOptions(category,current) {
 function descriptionField(f) {
   const opts=descriptionOptions(f.category,f.name);
   const match=opts.includes(f.name)&&!f.manual;
-  return `<div class="field description-field"><label for="f-description">Keterangan</label><select class="sel ket-select" id="f-description" data-artoselect data-icon="receipt"><option value="__manual" data-icon="pencil" ${match?'':'selected'}>Isi manual</option>${opts.map(n=>`<option value="${esc(n)}" ${match&&n===f.name?'selected':''}>${esc(n)}</option>`).join('')}</select><input id="f-name" class="text" autocomplete="off" value="${esc(f.name)}" placeholder="Tulis keterangan..." ${match?'hidden':''} aria-label="Keterangan manual"></div>`;
+  return `<div class="field description-field"><label for="f-description">Keterangan</label><select class="sel ket-select" id="f-description" data-artoselect data-icon="receipt"><option value="__manual" data-icon="pencil" ${match?'':'selected'}>Isi manual</option>${opts.map(n=>`<option value="${esc(n)}" ${match&&n===f.name?'selected':''}>${esc(n)}</option>`).join('')}</select><input id="f-name" class="text" autocomplete="off" value="${esc(f.name)}" placeholder="Tulis keterangan (boleh kosong)" ${match?'hidden':''} aria-label="Keterangan manual"></div>`;
 }
 function bindDescription(root,f) {
   const d=root.querySelector('#f-description'),n=root.querySelector('#f-name');
@@ -1449,7 +1508,8 @@ function openTx(init={}){
      if(!Number.isSafeInteger(f.amount)||f.amount<=0)throw new Error('Isi jumlah yang lebih besar dari 0.');
      if(!ArtoModel.validDate(f.date)||f.date>todayISO())throw new Error('Pilih tanggal yang valid, tidak melebihi hari ini.');
      requireWallet(data,f.wallet);if(k==='transfer'){requireWallet(data,f.toWallet);if(f.toWallet===f.wallet)throw new Error('Pilih dompet tujuan yang berbeda.');}
-     if(['in','out'].includes(k)&&!f.name.trim())throw new Error('Isi keterangan.');
+     if(k==='in'&&!f.name.trim())throw new Error('Isi keterangan.');
+     if(k==='out'&&!f.name.trim())f.name=catOf(f.category).name; // kosong: pakai nama kategori
      if(k==='out'&&!ArtoModel.categories(data).some(c=>c.id===f.category))throw new Error('Pilih kategori.');
      if(!Number.isSafeInteger(f.fee)||f.fee<0)throw new Error('Biaya admin tidak valid.');
      const x=Object.assign({},original||{},{id,amount:f.amount,wallet:f.wallet,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime(),updatedAt:new Date().toISOString()});
@@ -1785,19 +1845,20 @@ function openNumberSetting(key, title, hintText, back) {
 }
 
 // ---- Perbaikan data lama: saldo awal tanpa tanggal ----
-function legacyOpeningMissing(data=S) {
-  const rows=[];
-  (data.wallets||[]).forEach(w=>{ if(Number(w.initial)&&!ArtoModel.validDate(w.initialDate)) rows.push({col:'wallets',id:w.id,name:w.name,kind:'Dompet',amount:Number(w.initial)||0}); });
-  (data.goals||[]).forEach(g=>{ if(Number(g.initial)&&!ArtoModel.validDate(g.initialDate)) rows.push({col:'goals',id:g.id,name:g.name,kind:'Tabungan',amount:Number(g.initial)||0}); });
+// includeAuto: sertakan juga tanggal yang diisi otomatis, supaya masih bisa diperiksa dan diubah di Pengaturan
+function legacyOpeningMissing(data=S,includeAuto=false) {
+  const rows=[], need=a=>Number(a.initial)&&(!ArtoModel.validDate(a.initialDate)||(includeAuto&&a.openingDateAuto));
+  (data.wallets||[]).forEach(w=>{ if(need(w)) rows.push({col:'wallets',id:w.id,name:w.name,kind:'Dompet',amount:Number(w.initial)||0,date:w.initialDate}); });
+  (data.goals||[]).forEach(g=>{ if(need(g)) rows.push({col:'goals',id:g.id,name:g.name,kind:'Tabungan',amount:Number(g.initial)||0,date:g.initialDate}); });
   return rows;
 }
 function openLegacyOpeningFix(back) {
-  const items=legacyOpeningMissing();
+  const items=legacyOpeningMissing(S,true);
   if(!items.length){
     openSheet('Perbaiki data lama',`<div class="note good">${svg('good')}<span>Semua saldo awal sudah memiliki tanggal. Tidak ada data yang perlu diperbaiki.</span></div><button class="save" id="legacy-done">Selesai</button>`,root=>{root.querySelector('#legacy-done').onclick=()=>back?back():closeSheet();},back);
     return;
   }
-  const rows=items.map((x,i)=>`<div class="set-group" style="margin-top:${i?'10':'0'}px"><div class="set-row" style="align-items:flex-start"><span class="ico ${x.col==='wallets'?'g':'s'}" style="width:36px;height:36px">${svg(x.col==='wallets'?'wallet':'jar')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${x.kind} · Saldo awal ${rp(x.amount)}</span><label for="legacy-date-${i}" class="t2" style="display:block;margin-top:10px;color:var(--ink);font-weight:700">Tanggal saldo awal berlaku</label><input type="date" class="sel" id="legacy-date-${i}" max="${todayISO()}" style="margin-top:6px;width:100%"></span></div></div>`).join('');
+  const rows=items.map((x,i)=>`<div class="set-group" style="margin-top:${i?'10':'0'}px"><div class="set-row" style="align-items:flex-start"><span class="ico ${x.col==='wallets'?'g':'s'}" style="width:36px;height:36px">${svg(x.col==='wallets'?'wallet':'jar')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${x.kind} · Saldo awal ${rp(x.amount)}</span><label for="legacy-date-${i}" class="t2" style="display:block;margin-top:10px;color:var(--ink);font-weight:700">Tanggal saldo awal berlaku</label><input type="date" class="sel" id="legacy-date-${i}" max="${todayISO()}" value="${ArtoModel.validDate(x.date)?x.date:''}" style="margin-top:6px;width:100%"></span></div></div>`).join('');
   openSheet('Perbaiki data lama',`<p class="hint" style="margin-top:0">Pilih tanggal ketika saldo awal ini mulai berlaku. Jumlah saldo tidak akan diubah. Laporan sebelum tanggal tersebut tidak akan memasukkan saldo awal ini.</p>${rows}<p class="err" id="f-err" hidden></p><button class="save" id="legacy-save">Simpan perbaikan</button>`,root=>{
     root.querySelector('#legacy-save').onclick=async()=>{
       const err=root.querySelector('#f-err'),dates=items.map((_,i)=>root.querySelector('#legacy-date-'+i).value);
@@ -1807,8 +1868,8 @@ function openLegacyOpeningFix(back) {
         const undo=await commitFinancial(data=>items.map((x,i)=>{
           const cur=(data[x.col]||[]).find(v=>v.id===x.id);
           if(!cur)throw new Error(x.name+' tidak ditemukan. Buka ulang perbaikan data lama.');
-          if(Number(cur.initial)!==Number(x.amount)||ArtoModel.validDate(cur.initialDate))throw new Error(x.name+' sudah berubah. Buka ulang perbaikan data lama.');
-          return {col:x.col,id:x.id,doc:Object.assign({},cur,{initialDate:dates[i],openingDateUpdatedAt:new Date().toISOString()})};
+          if(Number(cur.initial)!==Number(x.amount)||(ArtoModel.validDate(cur.initialDate)&&!cur.openingDateAuto))throw new Error(x.name+' sudah berubah. Buka ulang perbaikan data lama.');
+          const doc=Object.assign({},cur,{initialDate:dates[i],openingDateUpdatedAt:new Date().toISOString()});delete doc.openingDateAuto;return {col:x.col,id:x.id,doc};
         }));
         render();closeSheet();toast('Tanggal saldo awal diperbaiki',undo);if(back)back();
       }catch(e){err.textContent=e.message||'Gagal menyimpan perbaikan.';err.hidden=false;}
@@ -1827,7 +1888,7 @@ function openSettings() {
     <div class="set-label">Batas & rencana</div><div class="set-group">
       <button class="set-row" id="s-limit"><span class="grow"><span class="t1">Batas Harian per bulan</span><span class="t2">${S.config.limit ? rp(S.config.limit) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       <button class="set-row" id="s-plan"><span class="grow"><span class="t1">Rencana tabungan per bulan</span><span class="t2">${S.config.planSave ? rp(S.config.planSave) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button></div>
-    ${legacyOpeningMissing().length ? `<div class="set-label">Perbaikan data lama</div><div class="set-group"><button class="set-row" id="s-legacy-opening"><span class="ico b" style="width:36px;height:36px">${svg('clock')}</span><span class="grow"><span class="t1">Perbaiki tanggal saldo awal</span><span class="t2">${legacyOpeningMissing().length} data lama belum memiliki tanggal saldo awal</span></span><span class="chev">${svg('right',2.6)}</span></button></div>` : ''}
+    ${legacyOpeningMissing(S,true).length ? `<div class="set-label">Perbaikan data lama</div><div class="set-group"><button class="set-row" id="s-legacy-opening"><span class="ico b" style="width:36px;height:36px">${svg('clock')}</span><span class="grow"><span class="t1">Perbaiki tanggal saldo awal</span><span class="t2">${legacyOpeningMissing().length} data lama belum memiliki tanggal saldo awal</span></span><span class="chev">${svg('right',2.6)}</span></button></div>` : ''}
     <div class="set-label">Keamanan di HP ini</div><div class="set-group">
       <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Diminta setiap Arto dibuka' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       ${pinOn ? '<button class="set-row" id="s-pinoff"><span class="grow t1">Matikan PIN</span></button><button class="set-row" id="s-locknow"><span class="grow t1">Kunci sekarang</span></button>' : ''}</div>
@@ -1963,7 +2024,23 @@ function showLogin() {
   goBtn.onclick = doLogin; $('lg-pass').addEventListener('keyup', e => { if (e.key === 'Enter') doLogin(); });
   const loc = $('lg-local'); if (loc) loc.onclick = () => { setMode('local'); L.hidden = true; render(); };
 }
-function fixFirstMonthBills() { /* No automatic date migration in 1.15. */ }
+function fixFirstMonthBills() { autoFixOpeningDates(); }
+// Saldo awal dari versi lama belum punya tanggal. Isi otomatis dengan tanggal paling awal yang diketahui
+// (tanggal dibuat atau catatan pertama akun itu). Jumlah saldo tidak diubah.
+function autoFixOpeningDates() {
+  const items=legacyOpeningMissing(); if(!items.length) return;
+  const today=todayISO(), fallback=(firstMonth()||curMonth())+'-01';
+  const changes=items.map(x=>{
+    const cur=(S[x.col]||[]).find(v=>v.id===x.id); if(!cur) return null;
+    const dates=[];
+    if(typeof cur.createdAt==='string'&&ArtoModel.validDate(cur.createdAt.slice(0,10))) dates.push(cur.createdAt.slice(0,10));
+    S.tx.forEach(t=>{ const hit=x.col==='wallets'?(t.wallet===x.id||t.toWallet===x.id):t.goal===x.id; if(hit&&ArtoModel.validDate(t.date)) dates.push(t.date); });
+    let d=dates.sort()[0]||fallback; if(d>today) d=today;
+    return {col:x.col,id:x.id,doc:Object.assign({},cur,{initialDate:d,openingDateAuto:true,openingDateUpdatedAt:new Date().toISOString()})};
+  }).filter(Boolean);
+  if(!changes.length) return;
+  try { writeChanges(changes); render(); toast('Tanggal saldo awal lama diisi otomatis. Periksa di Pengaturan, Perbaikan data lama.'); } catch(e) { console.error(e); }
+}
 
 function stopSync() { unsubs.forEach(u => { try { u(); } catch (e) {} }); unsubs = []; }
 function startSync() {
@@ -2119,15 +2196,17 @@ function openPeriodActivity(period,kind='all',category='all',from='riwayat'){
 let activityPeriod=null,activityCategory='all';
 document.addEventListener('click',e=>{
  if(e.target.closest('#scrim')||e.target.closest('#toast')||e.target.closest('.screen'))return;
- const b=e.target.closest('[data-reportmode],[data-reportmonth],[data-backyear],[data-pickreport],[data-reportactivity],[data-billmonth],[data-expensemonth],[data-expenseactivity],[data-newexpense],[data-newbill]');if(!b)return;
+ const b=e.target.closest('[data-pickperiod],[data-harianbudget],[data-reportmode],[data-reportmonth],[data-backyear],[data-pickreport],[data-reportactivity],[data-billmonth],[data-expensemonth],[data-expenseactivity],[data-newexpense],[data-newbill]');if(!b)return;
  const d=b.dataset;
  if(d.reportmode){reportMode=d.reportmode;reportFromYear=false;renderRiwayat();$('report-tab-'+reportMode).focus({preventScroll:true});}
  else if(d.reportmonth){rMonth=d.reportmonth;reportMode='month';reportFromYear=true;renderRiwayat();window.scrollTo(0,0);}
  else if(d.backyear){reportMode='year';reportFromYear=false;renderRiwayat();window.scrollTo(0,0);}
- else if(d.pickreport){const year=reportMode==='year';openSheet('Pilih '+(year?'tahun':'bulan'),`<div class="field"><label for="report-period">Periode</label>${year?`<select class="sel" id="report-period" data-artoselect>${Array.from({length:Math.max(1,Number(todayISO().slice(0,4))-Number(firstMonth().slice(0,4))+1)},(_,i)=>String(Number(todayISO().slice(0,4))-i)).map(y=>`<option ${y===rYear?'selected':''}>${y}</option>`).join('')}</select>`:`<input class="sel" type="month" id="report-period" value="${rMonth}" max="${curMonth()}">`}</div><p class="err" id="f-err" hidden></p><button class="save" id="choose-period">Tampilkan laporan</button>`,root=>{root.querySelector('#choose-period').onclick=()=>{const v=root.querySelector('#report-period').value;try{ArtoModel.reportPeriod(v,todayISO());if(year)rYear=v;else rMonth=v;closeSheet();renderRiwayat();}catch(err){root.querySelector('#f-err').textContent=err.message;root.querySelector('#f-err').hidden=false;}};});}
+ else if(d.pickreport){const year=reportMode==='year';openPeriodPicker({mode:year?'year':'month',value:year?rYear:rMonth,onPick:v=>{if(year)rYear=v;else rMonth=v;renderRiwayat();window.scrollTo(0,0);}});}
  else if(d.reportactivity)openPeriodActivity(selectedReport(),filter);
- else if(d.billmonth){billMonthView=shiftM(billMonthView||curMonth(),Number(d.billmonth));renderPokok();}
- else if(d.expensemonth){expenseMonth=shiftM(expenseMonth||curMonth(),Number(d.expensemonth));renderHarian();}
+ else if(d.billmonth){billMonthView=d.billmonth==='now'?curMonth():shiftM(billMonthView||curMonth(),Number(d.billmonth));renderPokok();}
+ else if(d.pickperiod){const bills=d.pickperiod==='billmonth';openPeriodPicker({mode:'month',value:bills?(billMonthView||curMonth()):(expenseMonth||curMonth()),allowFuture:bills,onPick:m=>{if(bills){billMonthView=m;renderPokok();}else{expenseMonth=m;renderHarian();}window.scrollTo(0,0);}});}
+ else if(d.harianbudget){expenseCategory='harian';expenseMonth=curMonth();go('harian');renderHarian();}
+ else if(d.expensemonth){expenseMonth=d.expensemonth==='now'?curMonth():shiftM(expenseMonth||curMonth(),Number(d.expensemonth));renderHarian();}
  else if(d.expenseactivity)openPeriodActivity(expenseMonth||curMonth(),'out',expenseCategory,'harian');
  else if(d.newexpense)openTx({kind:'out',category:d.newexpense,name:d.description||'',date:(expenseMonth||curMonth())===curMonth()?todayISO():ArtoModel.endOfMonth(expenseMonth)});
  else if(d.newbill)openBillForm(null);
