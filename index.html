@@ -524,7 +524,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.19';
+const APP_VERSION = '1.21';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -537,7 +537,12 @@ const OWNER = 'sugiyarto784@gmail.com';
 // Alamat Web App Google Apps Script "Arto Email" (diisi setelah deploy)
 const MAIL_URL = 'https://script.google.com/macros/s/AKfycbyJSYV-K2iCYM4QjWpPwtRi3bTYd79_i2vYy_yfzwJNO3AvDdRTjLFzphau2Fjt5OEK/exec';
 const CACHE_KEY = 'arto_cache_v1', MODE_KEY = 'arto_mode_v1', PIN_KEY = 'arto_pin_v1', TAB_KEY = 'arto_tab_v1', BIO_KEY = 'arto_bio_v1';
-const LOCK_AFTER = 5 * 60 * 1000;
+const LOCK_AFTER = 5 * 60 * 1000, REFRESH_KEY = 'arto_refresh_v1';
+// Refresh saat Arto sedang terbuka dan tidak terkunci: lewati kunci sekali. Ditutup, force close, atau dibuka ulang: selalu terkunci.
+let unloading = false;
+const markRefresh = () => { unloading = true; try { if (document.visibilityState === 'visible' && document.getElementById('lock').hidden) localStorage.setItem(REFRESH_KEY, String(Date.now())); } catch (e) {} };
+const takeRefresh = () => { try { const t = Number(localStorage.getItem(REFRESH_KEY)) || 0; localStorage.removeItem(REFRESH_KEY); return t > 0 && Date.now() - t < 20000; } catch (e) { return false; } };
+const clearRefresh = () => { try { localStorage.removeItem(REFRESH_KEY); } catch (e) {} };
 
 // ================= Ikon =================
 const I = {
@@ -2003,7 +2008,7 @@ function drawPin(title, hint, err) {
 }
 const PIN_TEXT = { unlock: ['Arto terkunci', 'Masukkan PIN'], verify: ['Masukkan PIN lama', 'Untuk melanjutkan'], new1: ['Buat PIN baru', '4 angka yang mudah kamu ingat'], new2: ['Ulangi PIN baru', 'Ketik sekali lagi'], off: ['Masukkan PIN', 'Untuk mematikan PIN'] };
 function pinScreen(err) { const [t, h] = PIN_TEXT[pinState.mode]; drawPin(t, err || h, !!err); }
-function showLock() { if (!getPin()) return; Object.assign(pinState, { mode: 'unlock', entry: '' }); pinScreen(); autoBio(); }
+function showLock() { if (!getPin()) return; clearRefresh(); Object.assign(pinState, { mode: 'unlock', entry: '' }); pinScreen(); autoBio(); }
 function startPin(kind) { Object.assign(pinState, { entry: '', first: '', mode: kind === 'new' ? 'new1' : kind === 'off' ? 'off' : 'verify' }); pinScreen(); }
 async function pinKey(k) {
   if (pinState.busy) return;
@@ -2296,8 +2301,8 @@ const NAV = { home: ['home', 'Beranda'], pokok: ['check', 'Tagihan'], harian: ['
 document.querySelectorAll('.nav .tab').forEach(b => { const [ic, n] = NAV[b.dataset.go]; b.innerHTML = svg(ic) + n; });
 render();
 try { const t = localStorage.getItem(TAB_KEY); if (t && $(t)) go(t); } catch (e) {}
-checkBio().then(() => { if (getPin() && !$('lock').hidden) pinScreen(); if (getPin()) autoBio(); });
-if (getPin()) showLock();
+checkBio().then(() => { if (getPin() && !$('lock').hidden) { pinScreen(); autoBio(); } });
+if (getPin() && !takeRefresh()) showLock();
 if (cloud.available) {
   auth.onAuthStateChanged(u => {
     if (u && u.email && u.email.toLowerCase() === OWNER) { cloud.user = { email: u.email }; setMode('cloud'); $('login').hidden = true; startSync(); }
@@ -2314,7 +2319,9 @@ async function checkUpdate() {
     if (m && m[1] !== APP_VERSION) { const t = $('toast'); t.className = 'toast'; t.innerHTML = '<span>Versi baru Arto tersedia</span><button id="t-reload">Muat ulang</button>'; t.hidden = false; placeToast(); $('t-reload').onclick = () => location.reload(); } } catch (e) {}
 }
 setTimeout(checkUpdate, 4000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); else if (!unloading) clearRefresh(); }); // saat refresh, browser juga mengirim 'hidden' setelah pagehide
+window.addEventListener('pagehide', markRefresh);
+window.addEventListener('beforeunload', () => { if (document.visibilityState === 'visible') markRefresh(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.(ai|site)|claudeusercontent/.test(location.hostname)) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
 }
