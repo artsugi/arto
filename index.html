@@ -441,6 +441,16 @@
 .asset-hero .fb b { font-size:clamp(13px,4vw,17px); }
 @media(max-width:360px){.bill-item{padding:12px;gap:8px}.bill-item .ico{width:34px;height:34px}.bill-item .pay{padding:0 10px}.asset-hero .fb{padding:10px}}
 
+/* v1.15: targeted extensions only; original theme, navigation and logo retained. */
+.period-totals{margin-top:10px}.period-totals b{display:block;margin-top:3px;font-size:17px;white-space:normal;overflow-wrap:anywhere}
+.report-details{margin-top:16px}.report-details>summary,.asset-detail>summary{padding:14px 16px;cursor:pointer;font-weight:700;color:var(--blue);font-size:13.5px;background:var(--card);border-radius:18px}
+.asset-detail>summary{border-radius:0}.annual-month .t2{white-space:normal}.annual-month:disabled{opacity:.5;cursor:default}
+.annual-month .amt{font-size:14px}.fee-total{margin-top:14px}.fee-total .lg b{white-space:normal;text-align:right}
+.sync-banner{font-size:11px}.report-details .sec{margin-top:14px}.bill-summary-actions{display:flex;gap:8px}
+.mlabel{min-width:0}.mlabel b{font-size:14px}.sum-box b{overflow-wrap:anywhere;white-space:normal}
+.asset-hero .big{font-size:clamp(24px,8.4vw,40px)}.asset-hero .fb b{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:360px){.nav [data-go="harian"]{font-size:10.5px}.kind button{font-size:12px}.annual-month{padding-left:12px;padding-right:12px}.annual-month .amt{font-size:12.5px}.rep-btns .bar-btn{font-size:12px}.hero .fb{padding:10px 8px}.flow3 .fb b{font-size:14px}}
+
 </style>
 </head>
 <body>
@@ -453,8 +463,8 @@
   </header>
 
   <section class="page on" id="home" aria-label="Beranda"></section>
-  <section class="page" id="pokok" aria-label="Pokok bulanan"></section>
-  <section class="page" id="harian" aria-label="Harian"></section>
+  <section class="page" id="pokok" aria-label="Tagihan"></section>
+  <section class="page" id="harian" aria-label="Pengeluaran"></section>
   <section class="page" id="tabung" aria-label="Tabungan"></section>
   <section class="page" id="riwayat" aria-label="Riwayat"></section>
   <section class="page" id="aktivitas" aria-label="Semua aktivitas"></section>
@@ -480,7 +490,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.14';
+const APP_VERSION = '1.15';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -581,7 +591,7 @@ const ArtoModel = (() => {
     {id:'harian',name:'Harian',icon:'bag'}, {id:'kesehatan',name:'Kesehatan',icon:'pill'},
     {id:'aplikasi',name:'Aplikasi pekerjaan',icon:'phone'}, {id:'tak_terduga',name:'Tak terduga',icon:'bolt'},
     {id:'rumah',name:'Rumah tangga',icon:'home'}, {id:'transportasi',name:'Transportasi',icon:'motor'},
-    {id:'pribadi',name:'Hiburan & pribadi',icon:'hobby'}, {id:'lain',name:'Lainnya',icon:'dots'}
+    {id:'pribadi',name:'Hiburan & pribadi',icon:'hobby'}, {id:'biaya_admin',name:'Biaya admin',icon:'receipt'}, {id:'lain',name:'Lainnya',icon:'dots'}
   ];
   const colors = ['#2447C6','#E5222B','#75B9E7','#1C389E','#5B6578','#2F7DB6','#A9B8ED','#24304A'];
   const array = a => Array.isArray(a) ? a : [];
@@ -650,12 +660,12 @@ const ArtoModel = (() => {
   const knownDate=x=>validDate(x.date);
   function walletAt(data,w,end) { return initialAt(w,end)+sum(array(data.tx).filter(x=>knownDate(x)&&x.date<=end),x=>effect(x,w.id)); }
   function goalAt(data,g,end) {
-    return initialAt(g,end)+sum(array(data.tx).filter(x=>knownDate(x)&&x.date<=end&&x.goal===g.id),x=>x.type==='save'?Number(x.amount)||0:x.type==='withdraw'?-(Number(x.amount)||0):0);
+    return initialAt(g,end)+sum(array(data.tx).filter(x=>knownDate(x)&&x.date<=end&&x.goal===g.id),x=>x.type==='save'?Number(x.amount)||0:x.type==='withdraw'?-(Number(x.amount)||0):x.type==='goal_adjust'?(Number(x.amount)||0):0);
   }
   function savingAccounts(data) {
     const goals=array(data.goals).slice(), ids=new Set(goals.map(g=>g.id));
     // Preserve any orphaned legacy savings movement in the total, but flag it.
-    array(data.tx).filter(x=>['save','withdraw'].includes(x.type)).forEach(x=>{
+    array(data.tx).filter(x=>['save','withdraw','goal_adjust'].includes(x.type)).forEach(x=>{
       if (!ids.has(x.goal)) { ids.add(x.goal); goals.push({id:x.goal,name:'Tabungan tidak terhubung'+(x.goal?' ('+x.goal+')':''),initial:0,orphan:true}); }
     });
     return goals;
@@ -675,23 +685,24 @@ const ArtoModel = (() => {
   }
   // A confirmed total belongs to one billing period, not the recurring template.
   function billStatus(data,b,m,end='9999-12-31') {
-    const payments=billPayments(data,b,m,end), paid=sum(payments);
-    const record=(b.periodTotals||{})[m];
-    const explicit=record && Number.isSafeInteger(Number(record.amount)) && Number(record.amount)>0;
-    const snapshots=payments.filter(x=>Number.isSafeInteger(Number(x.billTotal)) && Number(x.billTotal)>0)
-      .sort((a,c)=>String(c.updatedAt||c.createdAt||c.date).localeCompare(String(a.updatedAt||a.createdAt||a.date)));
-    const legacyVariable=!!b.variable && !explicit && !snapshots.length && payments.length>0;
-    const total=explicit?Number(record.amount):snapshots.length?Number(snapshots[0].billTotal):legacyVariable?paid:Math.max(0,Number(b.amount)||0);
-    const estimated=!!b.variable && !explicit && !snapshots.length && !legacyVariable;
-    const remaining=Math.max(0,total-paid),overpaid=Math.max(0,paid-total);
-    const settled=payments.length>0 && !estimated && remaining===0;
-    return {payments,paid,total,remaining,overpaid,settled,estimated,legacyVariable,confirmed:!!explicit||!!snapshots.length,partial:paid>0&&!settled};
+    const payments=billPayments(data,b,m,end),paid=sum(payments),record=(b.periodTotals||{})[m];
+    const explicit=record&&Number.isSafeInteger(Number(record.amount))&&Number(record.amount)>0;
+    const snapshots=payments.filter(x=>Number.isSafeInteger(Number(x.billTotal))&&Number(x.billTotal)>0).sort((a,c)=>String(c.updatedAt||c.createdAt||c.date).localeCompare(String(a.updatedAt||a.createdAt||a.date)));
+    const frozen=(b.frozenPeriods||{})[m];
+    const legacyVariable=!!(frozen?frozen.variable:b.variable)&&!explicit&&!snapshots.length&&payments.length>0;
+    const total=explicit?Number(record.amount):snapshots.length?Number(snapshots[0].billTotal):legacyVariable?paid:frozen?Math.max(0,Number(frozen.amount)||0):Math.max(0,Number(b.amount)||0);
+    const estimated=!!(frozen?frozen.variable:b.variable)&&!explicit&&!snapshots.length&&!legacyVariable,unknown=estimated&&total===0;
+    const cancel=(b.periodCancellations||{})[m],cancelled=!!(cancel&&validDate(cancel.date)&&cancel.date<=end);
+    const originalRemaining=Math.max(0,total-paid),remaining=cancelled?0:originalRemaining,overpaid=Math.max(0,paid-total);
+    const settled=cancelled||(payments.length>0&&!estimated&&remaining===0);
+    return {payments,paid,total,remaining,originalRemaining,overpaid,settled,estimated,unknown,cancelled,cancellation:cancelled?cancel:null,legacyVariable,confirmed:!!explicit||!!snapshots.length,partial:paid>0&&!settled};
   }
+
   const monthIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
   const indexMonth=i=>Math.floor(i/12)+'-'+pad(i%12+1);
   function billDue(b,m) {
     const start=validMonth(b.startMonth)?b.startMonth:m,freq=Math.max(1,Math.trunc(Number(b.freq)||1));
-    return b.active!==false && m>=start && (monthIndex(m)-monthIndex(start))%freq===0;
+    return b.active!==false&&m>=start&&(!validMonth(b.endMonth)||m<=b.endMonth)&&(monthIndex(m)-monthIndex(start))%freq===0;
   }
   function openBills(data,end) {
     const last=end.slice(0,7),out=[];
@@ -700,16 +711,17 @@ const ArtoModel = (() => {
       const start=validMonth(b.startMonth)?b.startMonth:validMonth(b.createdMonth)?b.createdMonth:last;
       const floor=validMonth(b.createdMonth)&&b.createdMonth>start?b.createdMonth:start;
       const freq=Math.max(1,Math.trunc(Number(b.freq)||1)),first=monthIndex(start);
-      for(let i=first+Math.max(0,Math.ceil((monthIndex(floor)-first)/freq))*freq;i<=monthIndex(last);i+=freq){
+      const finish=validMonth(b.endMonth)&&b.endMonth<last?b.endMonth:last;
+      for(let i=first+Math.max(0,Math.ceil((monthIndex(floor)-first)/freq))*freq;i<=monthIndex(finish);i+=freq){
         const m=indexMonth(i),st=billStatus(data,b,m,end);
         if(!st.settled)out.push({b,m,status:st,remaining:st.remaining});
       }
     });
     return out.sort((a,b)=>(a.m+pad(Math.min(Number(a.b.dueDay)||1,Number(endOfMonth(a.m).slice(8))))).localeCompare(b.m+pad(Math.min(Number(b.b.dueDay)||1,Number(endOfMonth(b.m).slice(8))))));
   }
+
   function snapshot(data,m,today) {
-    if (!validMonth(m) || !validDate(today) || m>today.slice(0,7)) throw new Error('Periode laporan tidak valid.');
-    const start=m+'-01',end=m===today.slice(0,7)?today:endOfMonth(m),st=periodStats(data,start,end),before=addDays(start,-1);
+    const period=reportPeriod(m,today),{start,end}=period,st=periodStats(data,start,end),before=addDays(start,-1);
     const wallets=array(data.wallets).filter(w=>!validDate(w.initialDate)||w.initialDate<=end).map(w=>({id:w.id,name:w.name,balance:walletAt(data,w,end),archived:archivedAt(w,end)})).filter(w=>!w.archived||w.balance!==0).sort((a,b)=>b.balance-a.balance);
     const goals=savingAccounts(data).filter(g=>!validDate(g.initialDate)||g.initialDate<=end||array(data.tx).some(x=>x.goal===g.id&&knownDate(x)&&x.date<=end)).map(g=>({
       id:g.id,name:g.name,orphan:!!g.orphan,balance:goalAt(data,g,end),opening:goalAt(data,g,before),
@@ -720,8 +732,9 @@ const ArtoModel = (() => {
     if (array(data.tx).some(x=>!knownDate(x))) warnings.push('Ada transaksi dengan tanggal tidak valid; periksa sebelum memakai total laporan.');
     if (goals.some(g=>g.orphan)) warnings.push('Ada catatan tabungan tanpa tujuan aktif. Nilainya tetap ditampilkan agar tidak hilang dari total.');
     if (wallets.some(w=>w.archived&&w.balance!==0)) warnings.push('Ada saldo pada dompet yang sudah dihapus. Pulihkan dan periksa transaksi sebelum menghapus kembali.');
+    if (array(data.wallets).concat(array(data.goals)).some(a=>Number(a.initial)&&!validDate(a.initialDate))) warnings.push('Ada saldo awal lama tanpa tanggal; laporan historis mengikuti data lama, bukan bukti cakupan pencatatan lengkap.');
     if (st.reconciliationDifference) warnings.push('Perubahan saldo dompet belum cocok dengan arus kas. Periksa referensi dompet pada transaksi lama.');
-    return {start,end,st,wallets,goals,walletTotal,goalTotal,total:walletTotal+goalTotal,warnings};
+    return {start,end,mode:period.mode,period:period.key,st,wallets,goals,walletTotal,goalTotal,total:walletTotal+goalTotal,warnings};
   }
   function expenseGroups(data,T) {
     const map=new Map(),cats=categories(data);array(T).filter(isExpense).forEach(x=>{const c=categoryOf(data,x,cats),g=map.get(c.id)||{id:c.id,name:c.name,icon:c.icon,v:0};g.v+=Number(x.amount)||0;map.set(c.id,g);});
@@ -731,8 +744,43 @@ const ArtoModel = (() => {
     const map=new Map(),cats=categories(data);array(T).filter(isExpense).forEach(x=>{const c=categoryOf(data,x,cats),name=String(x.name||'Pengeluaran'),key=c.id+'|'+name.toLowerCase(),g=map.get(key)||{name,cat:c.name,icon:c.icon,v:0};g.v+=Number(x.amount)||0;map.set(key,g);});
     return Array.from(map.values()).sort((a,b)=>b.v-a.v).slice(0,5);
   }
-  return {defaults,array,named,sum,isExpense,validDate,validMonth,addDays,endOfMonth,categories,categoryOf,effect,walletAt,goalAt,savingAccounts,savingsAt,periodStats,snapshot,expenseGroups,topExpenses,archivedAt,billPayments,billStatus,billDue,openBills};
+  function reportPeriod(key,today) {
+    if(!validDate(today))throw new Error('Tanggal laporan tidak valid.');
+    key=String(key||today.slice(0,7));
+    const year=/^\d{4}$/.test(key)&&Number(key)>=1000;
+    if(!year&&!validMonth(key))throw new Error('Periode laporan tidak valid.');
+    const start=key+(year?'-01-01':'-01'),last=year?key+'-12-31':endOfMonth(key);
+    if(start>today)throw new Error('Periode mendatang belum tersedia.');
+    return {key,mode:year?'year':'month',start,end:last>today?today:last};
+  }
+  function monthlySeries(data,year,today) {
+    return Array.from({length:12},(_,i)=>{
+      const m=String(year)+'-'+pad(i+1),future=m>today.slice(0,7);
+      if(future)return {month:m,future:true,income:0,out:0,count:0,net:0};
+      const st=periodStats(data,m+'-01',m===today.slice(0,7)?today:endOfMonth(m));
+      return {month:m,future:false,income:st.income,out:st.out,count:st.T.length,net:st.income-st.out};
+    });
+  }
+  // Validate dated daily balances, not just the current balance. Preserve legacy
+  // negatives when an unrelated edit is made, but never make a deficit worse.
+  function validateSavings(before,after) {
+    const ids=new Set(array(before.goals).concat(array(after.goals)).map(g=>g.id));
+    ids.forEach(id=>{
+      const old=array(before.goals).find(g=>g.id===id)||{id,initial:0},g=array(after.goals).find(g=>g.id===id);
+      if(!g)return;
+      const dates=new Set(array(before.tx).concat(array(after.tx)).filter(x=>x.goal===id&&knownDate(x)).map(x=>x.date));
+      if(validDate(g.initialDate))dates.add(g.initialDate);
+      if(!dates.size)dates.add('9999-12-31');
+      dates.forEach(date=>{
+        const value=goalAt(after,g,date),previous=goalAt(before,old,date);
+        if(value<0&&value<previous)throw new Error('Saldo '+(g.name||'tabungan')+' tidak cukup pada '+date+'. Periksa jumlah dan tanggal.');
+      });
+    });
+  }
+
+  return {reportPeriod,monthlySeries,validateSavings,defaults,array,named,sum,isExpense,validDate,validMonth,addDays,endOfMonth,categories,categoryOf,effect,walletAt,goalAt,savingAccounts,savingsAt,periodStats,snapshot,expenseGroups,topExpenses,archivedAt,billPayments,billStatus,billDue,openBills};
 })();
+
 // ARTO_MODEL_END
 
 // ================= Kategori =================
@@ -744,13 +792,13 @@ const LEGACY_DETAILS = [
 ];
 const CATS = ArtoModel.defaults;
 const DESCRIPTION_PRESETS = {
-  harian:['Makan','Kopi','Jajan','Belanja dapur','Transport','Hiburan','Hobi','Olahraga'],
+  harian:['Makan','Kopi','Jajan','Belanja dapur'],
   kesehatan:['Obat','Dokter','Pemeriksaan kesehatan'],
   aplikasi:['ChatGPT','Canva','Google Workspace','Hosting'],
   tak_terduga:['Perbaikan mendadak','Kebutuhan darurat'],
   rumah:['Listrik','Air','Internet rumah','Cicilan bulanan'],
   transportasi:['Bensin','Parkir','Transport','Servis kendaraan'],
-  pribadi:['Hiburan','Hobi','Olahraga'], lain:[]
+  pribadi:['Hiburan','Hobi','Olahraga'], biaya_admin:['Biaya admin transfer','Biaya admin pembayaran'], lain:[]
 };
 // Old config.cats remains a list of description suggestions; new broad categories use a separate key.
 const storedCats = () => ArtoModel.named(S.config.expenseCategories);
@@ -784,32 +832,112 @@ function remote(fn) {
   if (!(cloud.user && db)) return;
   try { const p = fn(); if (p && p.catch) p.catch(e => { console.error(e); toast('Gagal menyimpan. Periksa koneksi internet.', null, true); }); } catch (e) { console.error(e); }
 }
-function put(col, doc) {
-  categoryCache = null;
-  const arr = S[col], i = arr.findIndex(x => x.id === doc.id);
-  if (i >= 0) arr[i] = doc; else arr.push(doc);
-  cache(); remote(() => db.collection(col).doc(doc.id).set(strip(doc)));
+let pendingWrites=0, lastWriteError='', financeBusy=false;
+const clone=x=>x==null?null:JSON.parse(JSON.stringify(x));
+const stable=x=>JSON.stringify(x,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((o,k)=>(o[k]=v[k],o),{}):v);
+function saveFeedback(){
+  let el=$('save-state');if(!el){el=document.createElement('small');el.id='save-state';el.setAttribute('role','status');document.querySelector('.hello').append(el);}
+  const text=lastWriteError?'Penyimpanan gagal - periksa koneksi':pendingWrites||financeBusy?'Menyimpan...':cloud.mode==='local'?'Tersimpan di perangkat ini':cloud.pending?'Menunggu sinkronisasi':cloud.online===false?'Offline - data tersimpan sebelumnya':'';
+  el.textContent=text;el.hidden=!text;el.style.cssText='font-size:11px;display:block;color:var(--muted)';
 }
-function del(col, id) { categoryCache = null; S[col] = S[col].filter(x => x.id !== id); cache(); remote(() => db.collection(col).doc(id).delete()); }
-function putConfig(patch) { categoryCache = null; Object.assign(S.config, patch); cache(); remote(() => db.collection('config').doc('main').set(patch, { merge: true })); }
+function applyChanges(data,list){list.forEach(c=>{const a=data[c.col],i=a.findIndex(x=>x.id===c.id);if(c.doc){if(i<0)a.push(clone(c.doc));else a[i]=clone(c.doc);}else if(i>=0)a.splice(i,1);});}
+function put(col,doc){return writeChanges([{col,id:doc.id,doc}]);}
+function del(col,id){return writeChanges([{col,id,doc:null}]);}
+function putConfig(patch){
+  const before=clone(S.config);Object.assign(S.config,patch);categoryCache=null;cache();
+  if(cloud.user&&db){pendingWrites++;lastWriteError='';saveFeedback();
+    const payload=Object.assign({},patch,{ledgerRevision:firebase.firestore.FieldValue.increment(1)});
+    db.collection('config').doc('main').set(payload,{merge:true}).then(()=>{lastWriteError='';}).catch(e=>{
+      Object.keys(patch).forEach(k=>{if(stable(S.config[k])===stable(patch[k])){if(before[k]===undefined)delete S.config[k];else S.config[k]=before[k];}});
+      lastWriteError=e.message;cache();render();toast('Pengaturan gagal disimpan. Coba lagi.',null,true);
+    }).finally(()=>{pendingWrites--;saveFeedback();});
+  }
+}
+// Compatibility path for small manager edits. All related writes remain atomic;
+// explicit pending/failed feedback replaces an unconditional cloud-save claim.
+function writeChanges(changes){
+  const before=changes.map(c=>({col:c.col,id:c.id,doc:clone(S[c.col].find(x=>x.id===c.id)||null)}));
+  applyChanges(S,changes);categoryCache=null;cache();let failed=false;
+  if(cloud.user&&db){
+    pendingWrites++;lastWriteError='';saveFeedback();
+    try{
+      const batch=db.batch();changes.forEach(c=>{const ref=db.collection(c.col).doc(c.id);c.doc?batch.set(ref,strip(c.doc)):batch.delete(ref);});
+      batch.set(db.collection('config').doc('main'),{ledgerRevision:firebase.firestore.FieldValue.increment(1)},{merge:true});
+      batch.commit().catch(e=>{failed=true;lastWriteError=e.message;
+        applyChanges(S,before.filter((c,i)=>stable(S[c.col].find(x=>x.id===c.id)||null)===stable(changes[i].doc||null)));
+        categoryCache=null;cache();render();toast('Perubahan gagal disimpan. Periksa koneksi dan izin data.',null,true);
+      }).finally(()=>{pendingWrites--;saveFeedback();});
+    }catch(e){failed=true;pendingWrites--;applyChanges(S,before);cache();lastWriteError=e.message;saveFeedback();throw e;}
+  }
+  return async()=>{if(failed)throw new Error('Perubahan sebelumnya tidak tersimpan.');return commitFinancial(data=>{
+    changes.forEach(c=>{if(stable(data[c.col].find(x=>x.id===c.id)||null)!==stable(c.doc||null))throw new Error('Data sudah berubah. Batalkan melalui riwayat, bukan menimpa perubahan baru.');});return before;
+  },false);};
+}
+function expectUnchanged(data,col,original){
+  if(original&&stable(data[col].find(x=>x.id===original.id)||null)!==stable(original))throw new Error('Data berubah di perangkat lain. Buka ulang formulir.');
+}
+function requireWallet(data,id){const w=data.wallets.find(w=>w.id===id&&!w.archived);if(!w)throw new Error('Pilih dompet aktif.');return w;}
+function validateChanges(data,changes){
+  const after=clone(data);applyChanges(after,changes);ArtoModel.validateSavings(data,after);return after;
+}
+// Re-read the server ledger under a config/main revision guard. All v1.15 writes
+// increment that guard. No startup migration, extra collection, or cached sum
+// is used to approve an online payment. Older clients must be updated too.
+async function commitFinancial(builder,makeUndo=true){
+  if(financeBusy)throw new Error('Tunggu penyimpanan sebelumnya selesai.');
+  financeBusy=true;lastWriteError='';saveFeedback();let before=[],changes=[];
+  try{
+    if(cloud.mode==='local'){
+      const data=clone(S);changes=builder(data);validateChanges(data,changes);
+      before=changes.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
+      applyChanges(S,changes);categoryCache=null;cache();
+    }else{
+      if(!cloud.user||!db||navigator.onLine===false)throw new Error('Hubungkan internet untuk memvalidasi dan menyimpan transaksi. Isian tetap tersedia.');
+      if(pendingWrites||cloud.pending)throw new Error('Tunggu sinkronisasi selesai sebelum menyimpan transaksi ini.');
+      let committed=false;
+      for(let attempt=0;attempt<3&&!committed;attempt++){
+        const guardRef=db.collection('config').doc('main'),guard=await guardRef.get({source:'server'}),cfg=guard.exists?guard.data():{},revision=Number(cfg.ledgerRevision)||0;
+        const lists=await Promise.all(COLS.map(c=>db.collection(c).get({source:'server'})));
+        const data=EMPTY();data.config=Object.assign({},cfg);COLS.forEach((c,i)=>{data[c]=lists[i].docs.map(d=>Object.assign({id:d.id},d.data()));});
+        const planned=builder(data);validateChanges(data,planned);
+        const prior=planned.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
+        try{
+          await db.runTransaction(async transaction=>{
+            const g=await transaction.get(guardRef),rev=Number(g.exists&&g.data().ledgerRevision)||0;
+            if(rev!==revision)throw new Error('ARTO_RETRY_LEDGER');
+            const reads=[];
+            for(const c of planned)reads.push(await transaction.get(db.collection(c.col).doc(c.id)));
+            reads.forEach((d,i)=>{const actual=d.exists?Object.assign({id:d.id},d.data()):null;if(stable(actual)!==stable(prior[i].doc))throw new Error('ARTO_RETRY_LEDGER');});
+            planned.forEach(c=>{const ref=db.collection(c.col).doc(c.id);c.doc?transaction.set(ref,strip(c.doc)):transaction.delete(ref);});
+            transaction.set(guardRef,{ledgerRevision:revision+1},{merge:true});
+          });
+          changes=planned;before=prior;committed=true;applyChanges(S,changes);S.config.ledgerRevision=revision+1;categoryCache=null;cache();
+        }catch(e){if(e.message!=='ARTO_RETRY_LEDGER'||attempt===2)throw e;}
+      }
+    }
+    if(!makeUndo)return null;
+    return async()=>commitFinancial(data=>{
+      changes.forEach(c=>{if(stable(data[c.col].find(x=>x.id===c.id)||null)!==stable(c.doc||null))throw new Error('Data sudah berubah. Buka riwayat untuk koreksi.');});return before;
+    },false);
+  }catch(e){lastWriteError=e.message;throw new Error(e.message==='ARTO_RETRY_LEDGER'?'Data berubah. Buka ulang formulir setelah sinkronisasi.':e.message||'Penyimpanan gagal.');}
+  finally{financeBusy=false;saveFeedback();}
+}
+async function formCommit(root,builder,done,buttonId='f-save'){
+  const btn=root.querySelector('#'+buttonId),err=root.querySelector('#f-err');
+  if(btn.disabled)return;const label=btn.textContent;btn.disabled=true;btn.textContent='Menyimpan...';if(err)err.hidden=true;
+  try{const undo=await commitFinancial(builder);done(undo);}
+  catch(e){if(err){err.textContent=e.message;err.hidden=false;}else toast(e.message,null,true);}
+  finally{if(btn.isConnected){btn.disabled=false;btn.textContent=label;}}
+}
+function linkedFee(data,parent){return data.tx.find(x=>x.feeFor===parent)||null;}
+function paymentChanges(data,record,fee,old){
+  expectUnchanged(data,'tx',old);const oldFee=linkedFee(data,record.id),changes=[{col:'tx',id:record.id,doc:record}];
+  if(fee>0){const f=Object.assign({},oldFee||{},{id:oldFee?oldFee.id:'fee_'+record.id,type:'other',category:'biaya_admin',feeFor:record.id,name:'Biaya admin - '+record.name,amount:fee,wallet:record.wallet,date:record.date,month:record.month,time:record.time,updatedAt:record.updatedAt||new Date().toISOString()});changes.push({col:'tx',id:f.id,doc:f});}
+  else if(oldFee)changes.push({col:'tx',id:oldFee.id,doc:null});
+  return changes;
+}
+function deletionChanges(data,old){expectUnchanged(data,'tx',old);const fee=linkedFee(data,old.id);return [{col:'tx',id:old.id,doc:null}].concat(fee?[{col:'tx',id:fee.id,doc:null}]:[]);}
 
-// Related writes (installment + period total, or wallet closure + settlement) use one batch.
-function writeChanges(changes) {
-  const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
-  const before=changes.map(c=>({col:c.col,id:c.id,doc:copy(S[c.col].find(x=>x.id===c.id)||null)}));
-  const apply=list=>{list.forEach(c=>{const a=S[c.col],i=a.findIndex(x=>x.id===c.id);if(c.doc){if(i<0)a.push(copy(c.doc));else a[i]=copy(c.doc);}else if(i>=0)a.splice(i,1);});categoryCache=null;cache();};
-  let batch=null;
-  if(cloud.user&&db){batch=db.batch();changes.forEach(c=>{const ref=db.collection(c.col).doc(c.id);if(c.doc)batch.set(ref,strip(c.doc));else batch.delete(ref);});}
-  apply(changes);
-  let failed=false;
-  if(batch)batch.commit().catch(e=>{
-    failed=true;console.error(e);
-    // Do not overwrite a newer local edit when rolling back a rejected write.
-    apply(before.filter((c,i)=>JSON.stringify(S[c.col].find(x=>x.id===c.id)||null)===JSON.stringify(changes[i].doc||null)));
-    render();toast('Perubahan gagal disimpan. Periksa koneksi dan izin data.',null,true);
-  });
-  return ()=>{if(!failed)writeChanges(before);};
-}
 const activeWallets=()=>S.wallets.filter(w=>!w.archived);
 const activeWallet=id=>activeWallets().some(w=>w.id===id);
 function txArchivedWallets(x){return x?S.wallets.filter(w=>w.archived&&(w.id===x.wallet||w.id===x.toWallet)):[];}
@@ -880,24 +1008,22 @@ function dueTag(o) {
   return `<span class="tag">Tanggal ${dueDayIn(o.b, o.m)}${o.m !== cm ? ' ' + mShort(o.m) : ''}</span>`;
 }
 const billRow=o=>{const st=o.status||billState(o.b,o.m);return `<div class="row bill-item"><span class="ico b">${svg('receipt')}</span>
-  <span class="grow"><span class="t1">${esc(o.b.name)}</span><span class="bill-balance num">${st.estimated?'Perkiraan ':st.partial?'Sisa ':''}${rp(st.remaining)}</span>
-  ${st.partial?`<span class="t2 bill-detail">Total ${rp(st.total)}<br>Sudah dibayar ${rp(st.paid)}</span><span class="tag partial">Dibayar sebagian</span>`:''}${dueTag(o)}</span>
-  <button class="pay" data-pay="${esc(o.b.id)}" data-m="${o.m}">${st.partial?'Bayar sisa':'Bayar'}</button></div>`;};
+ <span class="grow"><span class="t1">${esc(o.b.name)}</span><span class="bill-balance num">${st.unknown?'Jumlah belum diisi':(st.estimated?'Perkiraan ':st.partial?'Sisa ':'')+rp(st.remaining)}</span>
+ ${st.partial?`<span class="t2 bill-detail">Total ${rp(st.total)}<br>Sudah dibayar ${rp(st.paid)}</span><span class="tag partial">Dibayar sebagian</span>`:''}${dueTag(o)}</span>
+ <button class="pay" data-pay="${esc(o.b.id)}" data-m="${o.m}">${st.unknown?'Isi jumlah':st.partial?'Bayar sisa':'Bayar'}</button></div>`;};
 
-const TT = { in: ['in', 'inArrow', 'Uang masuk'], bill: ['b', 'receipt', 'Pokok bulanan'], harian: ['r', null, 'Harian'], other: ['g', 'bolt', 'Tak terduga'], save: ['s', 'jar', 'Ke tabungan'], withdraw: ['s', 'jar', 'Dari tabungan'], transfer: ['g', 'swap', 'Pindah dompet'], adjust: ['g', 'scale', 'Penyesuaian saldo'] };
+const TT = { goal_adjust: ['s','scale','Penyesuaian tabungan'], in: ['in', 'inArrow', 'Uang masuk'], bill: ['b', 'receipt', 'Tagihan'], harian: ['r', null, 'Harian'], other: ['g', 'bolt', 'Tak terduga'], save: ['s', 'jar', 'Ke tabungan'], withdraw: ['s', 'jar', 'Dari tabungan'], transfer: ['g', 'swap', 'Pindah dompet'], adjust: ['g', 'scale', 'Penyesuaian saldo'] };
 function txRow(x) {
-  const expense = isExpense(x), c = expense ? categoryOf(x) : null;
-  const [oldClass, oldIcon, label] = TT[x.type] || TT.other;
-  const cls = expense ? (x.type === 'bill' ? 'b' : 'r') : oldClass;
-  const icon = expense ? c.icon : oldIcon;
-  let sub = expense ? c.name + ' - ' + walletName(x.wallet) : label + ' - ' + walletName(x.wallet);
-  if (x.type === 'transfer') sub = walletName(x.wallet) + ' ke ' + walletName(x.toWallet);
-  if (x.type === 'save' || x.type === 'withdraw') sub = label + ' - ' + walletName(x.wallet);
-  sub += ' - ' + dShort(x.date);
-  const sign = x.type === 'in' || x.type === 'withdraw' ? '+' : x.type === 'transfer' ? '' : x.type === 'adjust' ? (x.amount >= 0 ? '+' : '\u2212') : '\u2212';
-  return `<button class="row tx-edit" data-edit="${esc(x.id)}" aria-label="Ubah ${esc(x.name)}, ${esc(rp(x.amount))}, ${esc(dShort(x.date))}">
-    <span class="ico ${cls}">${svg(icon || 'dots')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${esc(sub)}</span></span>
-    <span class="amt num ${sign === '+' ? 'pos' : ''}">${sign}${fmt(x.amount)}<span class="edit-hint">Ubah</span></span></button>`;
+  const expense=isExpense(x),c=expense?categoryOf(x):null;
+  const [oldClass,oldIcon,label]=TT[x.type]||TT.other,cls=expense?(x.type==='bill'?'b':'r'):oldClass,icon=expense?c.icon:oldIcon;
+  let sub=expense?c.name+' - '+walletName(x.wallet):label+' - '+walletName(x.wallet);
+  if(x.type==='transfer')sub=walletName(x.wallet)+' ke '+walletName(x.toWallet);
+  if(x.type==='goal_adjust')sub=(S.goals.find(g=>g.id===x.goal)||{name:'Tabungan'}).name+' - Koreksi saldo';
+  if(x.feeFor)sub='Biaya admin - '+walletName(x.wallet);
+  const fee=linkedFee(S,x.id);if(fee)sub+=' - Admin '+rp(fee.amount);
+  sub+=' - '+dShort(x.date);
+  const sign=['in','withdraw'].includes(x.type)?'+':x.type==='transfer'?'':['adjust','goal_adjust'].includes(x.type)?(x.amount>=0?'+':'\u2212'):'\u2212';
+  return `<button class="row tx-edit" data-edit="${esc(x.id)}" aria-label="Ubah ${esc(x.name)}, ${esc(rp(x.amount))}"><span class="ico ${cls}">${svg(icon||'dots')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${esc(sub)}</span></span><span class="amt num ${sign==='+'?'pos':''}">${sign}${fmt(x.amount)}<span class="edit-hint">${x.feeFor?'Ubah pembayaran':'Ubah'}</span></span></button>`;
 }
 
 const byDate = arr => arr.slice().sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
@@ -914,10 +1040,11 @@ function renderHome() {
     el.innerHTML = `<div class="hero"><div class="cap">Selamat datang di Arto</div><div class="big num">Rp 0</div><div class="sub">Mulai dengan menambahkan dompet: rekening bank, uang tunai, atau e-wallet.</div></div><div class="sec"><h2>Langkah pertama</h2></div><div class="start"><b>Tambah dompet pertama</b><p>Isi saldonya sekarang, atau mulai dari Rp 0.</p><button class="save" style="margin-top:0" data-act="wallet-new">Tambah dompet</button></div>`;
     return;
   }
-  const pend = pendingIncomes(), total = savingsUpTo();
+  const pend = pendingIncomes(), total = savingsUpTo(), unknownBills=o.ob.filter(q=>q.status.unknown).length;
   el.innerHTML = `<div class="hero"><div class="cap">Bisa dipakai</div><div class="big num">${rp(o.free)}</div>
     <div class="flow3"><div class="fb"><small>Masuk bulan ini</small><b class="num">${short(o.st.income)}</b></div><div class="fb"><small>Keluar bulan ini</small><b class="num">${short(o.st.out)}</b></div><div class="fb"><small>Saldo dompet</small><b class="num">${short(o.bal)}</b></div></div>
     </div>
+    ${unknownBills?`<button class="note warn" data-go="pokok" style="width:100%;text-align:left">${svg('warn')}<span>${unknownBills} tagihan belum memiliki jumlah. Bisa dipakai belum memperhitungkan jumlah yang belum diketahui.</span></button>`:''}
     ${(() => { const up = upcomingBills(SOON_DAYS); if (!up.length) return ''; const tot = sum(up, x => x.remaining);
       return `<button class="note warn" data-go="pokok" style="width:100%;text-align:left">${svg('warn')}<span>${up.length} tagihan jatuh tempo dalam ${SOON_DAYS} hari ke depan, total ${rp(tot)}. Sisa setelah dibayar ${rp(o.free - sum(up.filter(x => x.m !== o.m), x => x.remaining))}.</span></button>`; })()}
     ${pend.length ? `<div class="pending"><h3>Menunggu konfirmasi</h3>${pend.map(t => `<div class="row"><span class="grow"><span class="t1">${esc(t.name)}</span><span class="t2">${rp(t.amount)} ke ${esc(walletName(t.wallet))}</span></span><button class="ghost" data-incedit="${t.id}">Ubah</button><button class="pay" data-incok="${t.id}">Sudah masuk</button></div>`).join('')}</div>` : ''}
@@ -927,7 +1054,7 @@ function renderHome() {
     <div class="list">${(() => { const late = o.ob.filter(x => x.m < o.m || daysBetween(todayISO(), dueDate(x.b,x.m)) < 0); const soon = upcomingBills(SOON_DAYS).filter(x => !late.some(l => l.b.id === x.b.id && l.m === x.m)); const show = late.concat(soon);
       if (show.length) return show.slice(0,5).map(billRow).join('');
       const next = upcomingBills(62)[0];
-      return `<div class="empty">${!S.bills.length ? 'Belum ada tagihan. Tambahkan di halaman Pokok.' : next ? 'Tidak ada tagihan dalam ' + SOON_DAYS + ' hari ke depan. Berikutnya: ' + esc(next.b.name) + ', ' + dShort(dueDate(next.b,next.m)) + '.' : 'Semua tagihan sudah lunas.'}</div>`; })()}</div>
+      return `<div class="empty">${!S.bills.length ? 'Belum ada tagihan. Tambahkan di halaman Tagihan.' : next ? 'Tidak ada tagihan dalam ' + SOON_DAYS + ' hari ke depan. Berikutnya: ' + esc(next.b.name) + ', ' + dShort(dueDate(next.b,next.m)) + '.' : 'Tidak ada tagihan terjadwal dalam waktu dekat.'}</div>`; })()}</div>
     <div class="sec"><h2>Tabungan</h2><button class="link" data-go="tabung">Kelola</button></div><button class="row list" data-go="tabung"><span class="ico s">${svg('jar')}</span><span class="grow"><span class="t1">Total tabungan</span><span class="t2">${S.goals.length} tujuan</span></span><span class="amt num">${rp(total)}</span></button>
     <section id="home-activity" class="home-activity" aria-labelledby="home-activity-title">${homeFlowSection()}</section>
 `;
@@ -960,40 +1087,43 @@ document.addEventListener('keydown',e=>{
   }
 });
 
-function renderPokok() {
-  const o = overview(), m = o.m, due = S.bills.filter(b => billDue(b, m));
-  const paidTx = txIn(m).filter(x => x.type === 'bill');
-  const np = due.filter(b => billPaid(b, m)).length;
-  $('pokok').innerHTML = `<h1 class="title">Pokok bulanan</h1>
-    <div class="lead blue">${ring(due.length ? np / due.length : 0, '#fff', 'rgba(255,255,255,.22)', 68, 8, due.length ? np + '/' + due.length : '–')}
-      <div class="grow"><div class="cap">Tagihan yang belum dibayar</div><div class="big num">${rp(o.unpaid)}</div><div class="sub">${np} dari ${due.length} lunas, dibayar ${rp(sum(paidTx))}</div></div></div>
-    <button class="bar-btn" data-act="bills">${svg('receipt')}Kelola tagihan</button>
-    ${(() => { const nx = upcomingBills(SOON_DAYS).filter(x => x.m !== o.m); return nx.length ? `<div class="sec"><h2>Segera, bulan depan</h2><span>${rp(sum(nx, x => x.remaining))}</span></div><div class="list">${nx.map(billRow).join('')}</div>` : ''; })()}
-    <div class="sec"><h2>Belum dibayar</h2><span>urut jatuh tempo</span></div>
-    <div class="list">${o.ob.length ? o.ob.map(billRow).join('') : `<div class="empty">${S.bills.length ? 'Semua tagihan sudah lunas.' : 'Belum ada tagihan. Tekan Kelola tagihan untuk menambahkan.'}</div>`}</div>
-    <div class="sec"><h2>Riwayat pembayaran</h2><span>${rp(sum(paidTx))}</span></div>
-    <div class="list">${paidTx.length ? byDate(paidTx).map(x=>{
-      const b=S.bills.find(y=>y.id===x.bill),st=b?billState(b,x.billMonth):null;
-      return `<button class="row" data-edit="${esc(x.id)}"><span class="ico b">${svg('receipt')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${dShort(x.date)} - ${esc(walletName(x.wallet))}</span><span class="t2">Tagihan ${mLabel(x.billMonth)}${st?' - '+(st.settled?'Lunas':'Sisa '+rp(st.remaining)):''}</span></span><span class="amt num">${rp(x.amount)}<span class="edit-hint">Ubah</span></span></button>`;
-    }).join('') : '<div class="empty">Belum ada pembayaran bulan ini.</div>'}</div>`;
+let billMonthView=null,expenseMonth=null,expenseCategory='all';
+function periodNav(m,attr,allowFuture=false){const cm=curMonth(),first=firstMonth();return `<div class="mnav"><button class="mbtn" data-${attr}="-1" aria-label="Bulan sebelumnya" ${m<=first?'disabled':''}>${svg('left',2.4)}</button><div class="mlabel"><b>${mLabel(m)}</b>${m===cm?'<span class="now">Bulan ini</span>':''}</div><button class="mbtn" data-${attr}="1" aria-label="Bulan berikutnya" ${!allowFuture&&m>=cm?'disabled':''}>${svg('right',2.4)}</button></div>`;}
+function renderPokok(){
+ const cm=curMonth(),m=billMonthView||cm;billMonthView=m;
+ const due=S.bills.filter(b=>billDue(b,m)),states=due.map(b=>({b,m,status:billState(b,m)})),active=states.filter(o=>!o.status.cancelled);
+ const remaining=sum(active,o=>o.status.remaining),total=sum(active,o=>o.status.total),paid=sum(active,o=>o.status.paid),unknown=active.filter(o=>o.status.unknown).length;
+ const np=active.filter(o=>o.status.settled).length,open=active.filter(o=>!o.status.settled).sort((a,b)=>dueDate(a.b,m).localeCompare(dueDate(b.b,m)));
+ const arrears=openBills().filter(o=>o.m<m&&dueDate(o.b,o.m)<todayISO()),payments=S.tx.filter(x=>x.type==='bill'&&x.billMonth===m&&x.date<=todayISO());
+ const noBills=!S.bills.length,empty=noBills?'Belum ada tagihan. Tambahkan tagihan pertama.':!active.length?'Tidak ada tagihan jatuh tempo pada bulan ini.':'Semua tagihan bulan ini sudah lunas.';
+ $('pokok').innerHTML=`<h1 class="title">Tagihan</h1>${periodNav(m,'billmonth',true)}
+ <div class="lead blue">${active.length?ring(np/active.length,'#fff','rgba(255,255,255,.22)',68,8,np+'/'+active.length):''}<div class="grow"><div class="cap">Sisa tagihan ${mShort(m)}</div><div class="big num">${unknown&&!remaining?'Jumlah belum diisi':rp(remaining)}</div><div class="sub">${active.length?np+' dari '+active.length+' lunas':'Tidak ada tagihan bulan ini'}</div></div></div>
+ <div class="sum-row period-totals"><div class="stat"><small>Total tagihan${unknown?' diketahui':''}</small><b class="num">${rp(total)}</b></div><div class="stat"><small>Sudah dibayar</small><b class="num">${rp(paid)}</b></div></div>
+ ${unknown?`<div class="note warn">${svg('warn')}<span>${unknown} tagihan belum memiliki jumlah. Total hanya mencakup jumlah yang diketahui.</span></div>`:''}
+ <p class="hint">Untuk periode ${mLabel(m)}. Pembayaran dihitung sampai hari ini; biaya admin tidak mengurangi pokok tagihan.</p>
+ <div class="rep-btns"><button class="bar-btn main" data-newbill="true">${svg('plus')}Tambah tagihan</button><button class="bar-btn" data-act="bills">${svg('receipt')}Kelola</button></div>
+ ${arrears.length?`<div class="sec"><h2>Tunggakan sebelumnya</h2><span>${rp(sum(arrears,o=>o.remaining))}</span></div><div class="list">${arrears.map(billRow).join('')}</div>`:''}
+ <div class="sec"><h2>Perlu dibayar</h2><span>urut jatuh tempo</span></div><div class="list">${open.length?open.map(billRow).join(''):`<div class="empty">${empty}</div>`}</div>
+ ${m===cm?(()=>{const nx=upcomingBills(SOON_DAYS).filter(x=>x.m>cm);return nx.length?`<div class="sec"><h2>Segera, bulan depan</h2></div><div class="list">${nx.map(billRow).join('')}</div>`:'';})():''}
+ ${states.some(o=>o.status.cancelled)?`<details class="report-details"><summary>Tagihan dibatalkan</summary><div class="list">${states.filter(o=>o.status.cancelled).map(o=>`<div class="row"><span class="grow"><span class="t1">${esc(o.b.name)}</span><span class="t2">${esc(o.status.cancellation.reason)} - ${dShort(o.status.cancellation.date)}</span></span><span class="tag">Dibatalkan</span></div>`).join('')}</div></details>`:''}
+ <div class="sec"><h2>Riwayat pembayaran</h2><span>${rp(sum(payments))}</span></div><p class="hint">Pembayaran untuk tagihan ${mLabel(m)}, termasuk yang dibayar pada bulan lain.</p><div class="list">${payments.length?byDate(payments).map(txRow).join(''):'<div class="empty">Belum ada pembayaran untuk periode ini.</div>'}</div>`;
 }
-function renderHarian() {
-  const m = curMonth(), H = txIn(m).filter(x => isExpense(x) && categoryOf(x).id === 'harian'), spent = sum(H);
-  const lim = Number(S.config.limit) || 0, today = dayOf(todayISO()), dim = daysIn(m);
-  const left = lim - spent, avg = spent / today, proj = Math.round(avg * dim / 1000) * 1000, safe = lim ? Math.max(0,left) / (dim - today + 1) : 0;
-  const todaySpent = sum(H.filter(x => x.date === todayISO()));
-  const groups = {}; H.forEach(x => { const key = x.name.toLowerCase(); const c = groups[key] = groups[key] || {name:x.name,v:0,n:0}; c.v += Number(x.amount)||0; c.n++; });
-  const detail = Object.values(groups).sort((a,b)=>b.v-a.v);
-  $('harian').innerHTML = `<h1 class="title">Harian</h1>
-    ${lim ? `<div class="lead red">${ring(spent/lim,'var(--red)','#F7C4C6',68,8,Math.round(spent/lim*100)+'%')}<div class="grow"><div class="cap">Sisa batas jajan bulan ini</div><div class="big num">${rp(left)}</div><div class="sub">Terpakai ${rp(spent)} dari batas ${rp(lim)}</div></div></div>` : `<div class="lead red"><div class="grow"><div class="cap">Terpakai bulan ini</div><div class="big num">${rp(spent)}</div><div class="sub">Belum ada batas bulanan.</div></div></div>`}
-    <button class="bar-btn" data-act="limit">${lim ? 'Ubah' : 'Atur'} batas bulanan</button>
-    <div class="stats"><div class="stat"><small>Hari ini</small><b class="num">${short(todaySpent)}</b></div><div class="stat"><small>Rata-rata</small><b class="num">${short(avg)}/hari</b></div><div class="stat"><small>Batas aman</small><b class="num">${lim ? short(safe) + '/hari' : '-'}</b></div></div>
-    ${lim && spent ? (proj <= lim ? `<div class="note good">${svg('good')}<span>Kalau seperti ini terus, akhir bulan terpakai sekitar ${rp(proj)}. Masih di bawah batas.</span></div>` : `<div class="note warn">${svg('warn')}<span>Kalau seperti ini terus, akhir bulan bisa sampai ${rp(proj)}, lewat dari batas ${rp(lim)}.</span></div>`) : ''}
-    <div class="sec"><h2>Paling banyak untuk</h2><span>bulan ini</span></div>
-    <div class="top-list">${detail.length ? detail.map(o=>`<div class="tl"><div class="tl-head"><span class="ico r">${svg('bag')}</span><span class="tl-name">${esc(o.name)}<small>${o.n} kali</small></span><span class="tl-amt num">${rp(o.v)}<small>${Math.round(o.v/spent*100)}%</small></span></div><div class="tl-bar"><i style="width:${o.v/detail[0].v*100}%;background:var(--red)"></i></div></div>`).join('') : '<div class="empty">Belum ada pengeluaran harian bulan ini.</div>'}</div>
-    <div class="sec"><h2>Catat cepat</h2><button class="link" data-act="categories">Kategori</button></div><p class="hint" style="margin-bottom:10px">Kategori Harian. Pilih keterangan di bawah atau isi manual.</p>
-    <div class="chips">${LEGACY_DETAILS.concat(legacyDetails()).map(c=>`<button class="chip" data-quick="${esc(c.name)}">${svg(c.icon)}${esc(c.name)}</button>`).join('')}</div>
-    ${groupByDay(H,g=>`<span class="num">-${fmt(sum(g))}</span>`)}`;
+function renderHarian(){
+ const m=expenseMonth||curMonth();expenseMonth=m;const all=txIn(m).filter(isExpense),H=all.filter(x=>expenseCategory==='all'||categoryOf(x).id===expenseCategory),spent=sum(H),isNow=m===curMonth();
+ const lim=Number(S.config.limit)||0,day=isNow?dayOf(todayISO()):daysIn(m),remainingDays=daysIn(m)-day+1,left=lim-spent;
+ const category=expenseCategory==='all'?null:catOf(expenseCategory),presets=category?(DESCRIPTION_PRESETS[category.id]||[]):['Makan','Kopi','Belanja dapur','Bensin','Obat'];
+ const top=ArtoModel.topExpenses(S,H);
+ $('harian').innerHTML=`<h1 class="title">Pengeluaran</h1>${periodNav(m,'expensemonth')}
+ <div class="lead red"><div class="grow"><div class="cap">${category?esc(category.name):'Semua kategori'} - ${mShort(m)}</div><div class="big num">${rp(spent)}</div><div class="sub">${H.length} transaksi pengeluaran tercatat</div></div></div>
+ <div class="field"><label for="expense-category">Kategori</label><select class="sel" id="expense-category" data-artoselect data-icon="bag"><option value="all" ${expenseCategory==='all'?'selected':''}>Semua kategori</option>${allCats().map(c=>`<option value="${esc(c.id)}" data-icon="${esc(c.icon)}" ${expenseCategory===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+ ${expenseCategory==='harian'?`<div class="sec"><h2>Anggaran Harian</h2><button class="link" data-act="limit">${lim?'Ubah':'Atur'}</button></div><div class="list"><div class="asset-summary"><small>${lim?'Sisa anggaran Harian':'Belum ada anggaran bulanan'}</small><b class="num">${lim?rp(left):'-'}</b></div>${lim?`<div class="row"><span class="grow"><span class="t2">Terpakai ${rp(spent)} dari ${rp(lim)}</span>${isNow?`<span class="t2">Sisa anggaran per hari ${rp(Math.max(0,left)/remainingDays)}</span>`:''}</span></div>`:''}</div>`:''}
+ <div class="sec"><h2>Catat cepat</h2><button class="link" data-act="categories">Kategori</button></div><div class="chips">${presets.slice(0,6).map(name=>{const cat=category?category.id:name==='Bensin'?'transportasi':name==='Obat'?'kesehatan':'harian';return `<button class="chip" data-newexpense="${esc(cat)}" data-description="${esc(name)}">${svg(cat==='harian'?'bag':catOf(cat).icon)}${esc(name)}</button>`;}).join('')}<button class="chip" data-newexpense="${category?esc(category.id):'harian'}">${svg('plus')}Isi manual</button></div>
+ <div class="stats"><div class="stat"><small>${isNow?'Hari ini':'Transaksi'}</small><b class="num">${isNow?short(sum(H.filter(x=>x.date===todayISO()))):H.length}</b></div><div class="stat"><small>Rata-rata tercatat</small><b class="num">${short(spent/day)}/hari</b></div><div class="stat"><small>Kategori</small><b>${expenseCategory==='all'?expenseGroups(H).length:1}</b></div></div>
+ ${expenseCategory==='harian'&&isNow&&spent?`<p class="hint">Perkiraan berdasarkan transaksi tercatat: ${rp(Math.round(spent/day*daysIn(m)))} pada akhir bulan. Hari tanpa catatan bukan bukti tidak ada pengeluaran.</p>`:''}
+ <div class="sec"><h2>Pengeluaran terbesar</h2><span>5 teratas</span></div><div class="top-list">${top.length?top.map(g=>`<div class="tl"><div class="tl-head"><span class="ico r">${svg(g.icon)}</span><span class="tl-name">${esc(g.name)}<small>${esc(g.cat)}</small></span><span class="tl-amt num">${rp(g.v)}</span></div><div class="tl-bar"><i style="width:${g.v/top[0].v*100}%;background:var(--red)"></i></div></div>`).join(''):'<div class="empty">Belum ada transaksi tercatat.</div>'}</div>
+ <details class="report-details"><summary>Rincian seluruh kategori</summary>${spendingBreakdown(H)}</details>
+ <div class="sec"><h2>Aktivitas pengeluaran</h2><button class="link" data-expenseactivity="true">Lihat semua</button></div>${H.length?groupByDay(byDate(H).slice(0,10)):'<div class="list"><div class="empty">Belum ada pengeluaran pada pilihan ini.</div></div>'}`;
+ const select=$('expense-category');select.onchange=()=>{expenseCategory=select.value;renderHarian();};enhanceDropdowns($('harian'));
 }
 
 function renderTabung() {
@@ -1009,42 +1139,43 @@ function renderTabung() {
         <div class="goal-btns"><button class="gbtn main" data-savegoal="${g.id}">Tabung</button><button class="gbtn" data-withdraw="${g.id}">Ambil</button></div></div>`; }).join('')
       : '<div class="start"><b>Belum ada tujuan tabungan</b><p>Contoh: Dana darurat, Laptop baru, Mudik.</p><button class="save" style="margin-top:0" data-act="goal-new">Tambah tujuan</button></div>'}`;
 }
-let rMonth = null, filter = 'all';
-function firstMonth() { const ms = S.tx.map(x => x.month).sort(); return ms[0] || curMonth(); }
-function reportText(m) {
-  const snap = snapshot(m), st = snap.st, L = ['LAPORAN ARTO '+mLabel(m).toUpperCase(), 'Posisi '+snap.end, '', 'TOTAL ASET: '+rp(snap.total), 'Total dompet: '+rp(snap.walletTotal), 'Total tabungan: '+rp(snap.goalTotal), '', 'RINCIAN DOMPET'];
-  snap.wallets.forEach(w=>L.push(w.name+': '+rp(w.balance)));
-  L.push('', 'RINCIAN TABUNGAN');
-  snap.goals.forEach(g=>{ L.push(g.name+': '+rp(g.balance)); L.push('  Saldo awal '+rp(g.opening)+' | Ditabung '+rp(g.saved)+' | Diambil '+rp(g.withdrawn)); if(g.target) L.push('  Target '+rp(g.target)); });
-  L.push('', 'ARUS KAS PERIODE', 'Uang masuk: '+rp(st.income), 'Uang keluar: '+rp(st.out), 'Selisih masuk - keluar: '+rp(st.income-st.out), '', 'REKONSILIASI DOMPET', 'Saldo awal: '+rp(st.opening), 'Ditabung: '+rp(st.savedIn), 'Diambil dari tabungan: '+rp(st.savedOut), 'Penyesuaian: '+rp(st.adjust), 'Saldo akhir: '+rp(st.closing), '', 'PENGELUARAN PER KATEGORI');
-  expenseGroups(st.T).forEach(g=>L.push(g.name+': '+rp(g.v)));
-  const unpaid=ArtoModel.openBills(S,snap.end);
-  L.push('', 'SISA TAGIHAN: '+rp(sum(unpaid,x=>x.remaining))); unpaid.forEach(o=>L.push(o.b.name+' ('+mLabel(o.m)+'): '+rp(o.remaining)+(o.status.paid?' | Dibayar '+rp(o.status.paid):'')));
-  L.push('', 'Tabung, ambil tabungan, dan pindah dompet adalah perpindahan internal, bukan pendapatan atau belanja.');
-  return L.join('\n');
+let rMonth=null,filter='all',reportMode='month',rYear=null,reportFromYear=false;
+function firstMonth(){const ms=S.tx.map(x=>x.date&&x.date.slice(0,7)).concat(S.wallets.map(x=>x.initialDate&&x.initialDate.slice(0,7)),S.goals.map(x=>x.initialDate&&x.initialDate.slice(0,7)),S.bills.map(b=>b.startMonth)).filter(m=>ArtoModel.validMonth(m)&&m<=curMonth()).sort();return ms[0]||curMonth();}
+function selectedReport(){return reportMode==='year'?(rYear||todayISO().slice(0,4)):(rMonth||curMonth());}
+const periodName=key=>String(key).length===4?String(key):mLabel(key);
+function reportText(key=selectedReport()){
+ const snap=snapshot(key),st=snap.st,L=['LAPORAN ARTO '+periodName(key).toUpperCase(),snap.start+' - '+snap.end+' (WIB)','','TOTAL ASET: '+rp(snap.total),'Dompet: '+rp(snap.walletTotal),'Tabungan: '+rp(snap.goalTotal),'Uang masuk: '+rp(st.income),'Uang keluar: '+rp(st.out),'Selisih masuk - keluar: '+rp(st.income-st.out)];
+ L.push('','DOMPET');snap.wallets.forEach(w=>L.push(w.name+': '+rp(w.balance)));
+ L.push('','TABUNGAN');snap.goals.forEach(g=>L.push(g.name+': '+rp(g.balance)));L.push('Ditabung: '+rp(st.savedIn),'Diambil: '+rp(st.savedOut));
+ if(snap.mode==='year'){L.push('','RINGKASAN PER BULAN');ArtoModel.monthlySeries(S,key,todayISO()).forEach(row=>L.push(mShort(row.month)+': '+(row.future?'Belum berjalan':!row.count?'Belum ada transaksi tercatat':'Masuk '+rp(row.income)+' | Keluar '+rp(row.out)+' | Selisih '+rp(row.net))));}
+ L.push('','PENGELUARAN PER KATEGORI');expenseGroups(st.T).forEach(g=>L.push(g.name+': '+rp(g.v)));
+ const unpaid=ArtoModel.openBills(S,snap.end);L.push('','SISA TAGIHAN: '+rp(sum(unpaid,o=>o.remaining)));unpaid.forEach(o=>L.push(o.b.name+' ('+mLabel(o.m)+'): '+(o.status.unknown?'Jumlah belum diisi':rp(o.remaining))));
+ if(!st.T.length)L.push('','Tidak ada transaksi tercatat pada periode ini.');if(snap.warnings.length)L.push('',...snap.warnings);
+ L.push('','Perpindahan internal bukan pemasukan atau belanja. Biaya admin tetap termasuk pengeluaran.');return L.join('\n');
 }
-function renderRiwayat() {
-  const cm=curMonth(); if(!rMonth||rMonth>cm) rMonth=cm;
-  const m=rMonth, isNow=m===cm, snap=snapshot(m), st=snap.st;
-  const shown=st.T.filter(x=>matchesFilter(x,filter));
-  const assetRow=(o,isGoal)=>`<button class="row asset-item" ${o.orphan?'data-orphan':isGoal?'data-goaledit':'data-wallet'}="${esc(o.id)}"><span class="ico ${isGoal?'s':'g'}">${svg(isGoal?'jar':'wallet')}</span><span class="grow"><span class="t1">${esc(o.name)}${o.archived?' (dihapus)':''}</span><span class="t2">${isGoal ? (o.orphan?'Periksa tujuan tabungan - ':'')+'Ditabung '+rp(o.saved)+' - Diambil '+rp(o.withdrawn) : (isNow?'Saldo sekarang':'Saldo akhir bulan')}</span></span><b class="amt num">${rp(o.balance)}</b></button>`;
-  $('riwayat').innerHTML=`<h1 class="title">Riwayat</h1>
-    <div class="mnav"><button class="mbtn" data-rm="-1" aria-label="Bulan sebelumnya" ${m<=firstMonth()?'disabled':''}>${svg('left',2.4)}</button><div class="mlabel"><b>${mLabel(m)}</b>${isNow?'<span class="now">Bulan ini</span>':''}</div><button class="mbtn" data-rm="1" aria-label="Bulan berikutnya" ${isNow?'disabled':''}>${svg('right',2.4)}</button></div>
-    ${isNow?'':`<div class="note good" style="justify-content:space-between;align-items:center"><span>Melihat ${mLabel(m)}</span><button class="link" data-rm="now">Bulan ini</button></div>`}
-    <div class="hero asset-hero"><div class="cap">Total aset ${isNow?'sekarang':'akhir bulan'}</div><div class="big num">${rp(snap.total)}</div><div class="flow3"><div class="fb"><small>Dompet</small><b class="num">${rp(snap.walletTotal)}</b></div><div class="fb"><small>Tabungan</small><b class="num">${rp(snap.goalTotal)}</b></div><div class="fb"><small>Uang masuk ${isNow?'bulan ini':mShort(m)}</small><b class="num">${rp(st.income)}</b></div><div class="fb"><small>Uang keluar ${isNow?'bulan ini':mShort(m)}</small><b class="num">${rp(st.out)}</b></div></div></div>
-    <div class="rep-btns">${MAIL_URL && cloud.user ? `<button class="bar-btn main" data-act="mail" aria-label="Kirim laporan ${mLabel(m)} ke email">${svg('mail')}Email</button>` : ''}<button class="bar-btn" data-act="share">${svg('share')}Bagikan</button></div>
-    <div class="sec"><h2>Dompet</h2><button class="link" data-act="wallets">Kelola</button></div><div class="list"><div class="asset-summary"><small>Total dompet</small><b class="num">${rp(snap.walletTotal)}</b></div>${snap.wallets.length?snap.wallets.map(w=>assetRow(w,false)).join(''):'<div class="empty">Belum ada dompet.</div>'}</div>
-    <div class="sec"><h2>Tabungan</h2><button class="link" data-go="tabung">Kelola</button></div><div class="list"><div class="asset-summary"><small>Total tabungan</small><b class="num">${rp(snap.goalTotal)}</b></div>${snap.goals.length?snap.goals.map(g=>assetRow(g,true)).join(''):'<div class="empty">Belum ada tujuan tabungan.</div>'}</div>
-    ${isNow?'':'<p class="hint">Angka di atas sesuai periode. Kelola membuka pengaturan dompet atau tabungan saat ini.</p>'}
-    <div class="sec"><h2>Arus kas</h2><span>${mShort(m)} ${m.slice(0,4)}</span></div>
-    <div class="ledger"><div class="lg total"><span>Selisih masuk - keluar</span><b class="num">${rp(st.income-st.out)}</b></div><div class="lg"><span>Uang masuk</span><b class="num" style="color:var(--blue-2)">+${fmt(st.income)}</b></div><div class="lg"><span>Uang keluar</span><b class="num">-${fmt(st.out)}</b></div></div>
-    <div class="sec"><h2>Perubahan saldo dompet</h2></div><div class="ledger"><div class="lg total"><span>Saldo akhir</span><b class="num">${rp(st.closing)}</b></div><div class="lg"><span>Saldo awal</span><b class="num">${rp(st.opening)}</b></div><div class="lg"><span>Uang masuk</span><b class="num">+${fmt(st.income)}</b></div><div class="lg"><span>Uang keluar</span><b class="num">-${fmt(st.out)}</b></div><div class="lg"><span>Ditabung</span><b class="num">-${fmt(st.savedIn)}</b></div><div class="lg"><span>Diambil dari tabungan</span><b class="num">+${fmt(st.savedOut)}</b></div>${st.openingAdded?`<div class="lg"><span>Saldo awal dompet baru</span><b class="num">${rp(st.openingAdded)}</b></div>`:''}${st.adjust?`<div class="lg"><span>Penyesuaian saldo</span><b class="num">${rp(st.adjust)}</b></div>`:''}</div>
-    <p class="hint">Tabung dan ambil tabungan adalah perpindahan internal, bukan uang keluar atau pendapatan.</p>
-    ${snap.warnings.length?`<div class="note warn">${svg('warn')}<span>${snap.warnings.map(esc).join('<br>')}</span></div>`:''}${spendingBreakdown(st.T)}
-    <div class="sec"><h2>Transaksi ${mShort(m)}</h2><button class="link" data-viewall="all">Buka aktivitas</button></div>
-    <div class="seg" role="group" aria-label="Saring catatan">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['save','Tabungan']].map(([k,n])=>`<button aria-pressed="${filter===k}" data-f="${k}">${n}</button>`).join('')}</div>
-    ${shown.length?groupByDay(shown):'<div class="list" style="margin-top:14px"><div class="empty">Belum ada catatan untuk pilihan ini.</div></div>'}`;
+function renderRiwayat(){
+ const cm=curMonth(),cy=todayISO().slice(0,4);if(!rMonth||rMonth>cm)rMonth=cm;if(!rYear||rYear>cy)rYear=cy;
+ const key=selectedReport(),year=reportMode==='year',snap=snapshot(key),st=snap.st,isNow=year?key===cy:key===cm;
+ const shown=st.T.filter(x=>matchesFilter(x,filter)),assetRow=(o,isGoal)=>`<button class="row asset-item" ${o.orphan?'data-orphan':isGoal?'data-goaledit':'data-wallet'}="${esc(o.id)}"><span class="ico ${isGoal?'s':'g'}">${svg(isGoal?'jar':'wallet')}</span><span class="grow"><span class="t1">${esc(o.name)}${o.archived?' (dihapus)':''}</span></span><b class="amt num">${rp(o.balance)}</b></button>`;
+ const series=year?ArtoModel.monthlySeries(S,key,todayISO()):[];
+ $('riwayat').innerHTML=`<h1 class="title">Riwayat</h1>
+ <div class="seg home-flow-tabs" role="tablist" aria-label="Periode laporan">${[['month','Bulanan'],['year','Tahunan']].map(([k,n])=>`<button role="tab" id="report-tab-${k}" aria-selected="${reportMode===k}" aria-pressed="${reportMode===k}" aria-controls="report-panel" tabindex="${reportMode===k?0:-1}" data-reportmode="${k}">${n}</button>`).join('')}</div>
+ <div id="report-panel" role="tabpanel" aria-labelledby="report-tab-${reportMode}">
+ ${reportFromYear&&!year?`<button class="inline-back" data-backyear="true">${svg('left')}Kembali ke ${rYear}</button>`:''}
+ <div class="mnav"><button class="mbtn" data-rm="-1" aria-label="Periode sebelumnya" ${key<=(year?firstMonth().slice(0,4):firstMonth())?'disabled':''}>${svg('left',2.4)}</button><button class="mlabel" data-pickreport="true"><b>${periodName(key)}</b>${isNow?`<span class="now">${year?'Tahun':'Bulan'} berjalan</span>`:''}</button><button class="mbtn" data-rm="1" aria-label="Periode berikutnya" ${isNow?'disabled':''}>${svg('right',2.4)}</button></div>
+ <div class="hero asset-hero"><div class="cap">Total aset ${isNow?'sekarang':year?'akhir tahun':'akhir bulan'}</div><div class="big num">${rp(snap.total)}</div><div class="flow3"><div class="fb"><small>Dompet</small><b class="num">${rp(snap.walletTotal)}</b></div><div class="fb"><small>Tabungan</small><b class="num">${rp(snap.goalTotal)}</b></div><div class="fb"><small>Uang masuk ${year?key:isNow?'bulan ini':mShort(key)}</small><b class="num">${rp(st.income)}</b></div><div class="fb"><small>Uang keluar ${year?key:isNow?'bulan ini':mShort(key)}</small><b class="num">${rp(st.out)}</b></div></div></div>
+ <div class="rep-btns">${MAIL_URL&&cloud.user?`<button class="bar-btn main" data-act="mail">${svg('mail')}Email</button>`:''}<button class="bar-btn" data-act="share">${svg('share')}Bagikan</button><button class="bar-btn" data-reportactivity="true">${svg('clock')}Aktivitas</button></div>
+ ${!st.T.length?'<div class="note good">Tidak ada transaksi tercatat pada periode ini. Saldo tetap ditampilkan.</div>':''}
+ <div class="sec"><h2>Dompet</h2><button class="link" data-act="wallets">Kelola</button></div><div class="list"><div class="asset-summary"><small>Total dompet</small><b class="num">${rp(snap.walletTotal)}</b></div><details class="asset-detail" id="detail-wallets"><summary>Lihat ${snap.wallets.length} dompet</summary>${snap.wallets.map(w=>assetRow(w,false)).join('')||'<div class="empty">Belum ada dompet.</div>'}</details></div>
+ <div class="sec"><h2>Tabungan</h2><button class="link" data-go="tabung">Kelola</button></div><div class="list"><div class="asset-summary"><small>Total tabungan</small><b class="num">${rp(snap.goalTotal)}</b></div><details class="asset-detail" id="detail-goals"><summary>Lihat ${snap.goals.length} tujuan</summary>${snap.goals.map(g=>assetRow(g,true)).join('')||'<div class="empty">Belum ada tabungan.</div>'}<div class="row"><span class="grow"><span class="t2">Ditabung ${rp(st.savedIn)}</span><span class="t2">Diambil ${rp(st.savedOut)}</span></span></div></details></div>
+ <div class="sec"><h2>Arus kas</h2><span>${periodName(key)}</span></div><div class="ledger"><div class="lg total"><span>Selisih masuk - keluar</span><b class="num">${rp(st.income-st.out)}</b></div><div class="lg"><span>Uang masuk</span><b class="num">+${fmt(st.income)}</b></div><div class="lg"><span>Uang keluar</span><b class="num">-${fmt(st.out)}</b></div></div>
+ ${year?`<div class="sec"><h2>Ringkasan per bulan</h2><span>${key}</span></div><div class="list">${series.map(v=>`<button class="row annual-month" data-reportmonth="${v.month}" ${v.future?'disabled':''}><span class="grow"><span class="t1">${MONTHS[Number(v.month.slice(5))-1]}</span><span class="t2">${v.future?'Belum berjalan':!v.count?'Belum ada transaksi tercatat':'Masuk '+rp(v.income)+'<br>Keluar '+rp(v.out)}</span></span><span class="amt num">${v.future?'-':rp(v.net)}<span class="edit-hint">${v.future?'':'Lihat bulan'}</span></span></button>`).join('')}</div>`:''}
+ <details class="report-details" id="detail-reconcile"><summary>Perubahan saldo dompet</summary><div class="ledger"><div class="lg total"><span>Saldo akhir</span><b>${rp(st.closing)}</b></div>${[['Saldo awal',st.opening],['Saldo awal ditambahkan',st.openingAdded],['Uang masuk',st.income],['Uang keluar',-st.out],['Ditabung',-st.savedIn],['Diambil',st.savedOut],['Penyesuaian',st.adjust]].map(([n,v])=>`<div class="lg"><span>${n}</span><b class="num">${rp(v)}</b></div>`).join('')}</div></details>
+ ${snap.warnings.length?`<div class="note warn">${svg('warn')}<span>${snap.warnings.map(esc).join('<br>')}</span></div>`:''}${spendingBreakdown(st.T)}
+ ${year?'':`<div class="sec"><h2>Transaksi ${mShort(key)}</h2><button class="link" data-reportactivity="true">Lihat semua</button></div><div class="seg" role="group" aria-label="Saring catatan">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['save','Tabungan']].map(([k,n])=>`<button aria-pressed="${filter===k}" data-f="${k}">${n}</button>`).join('')}</div>${shown.length?groupByDay(byDate(shown).slice(0,10)):'<div class="empty">Belum ada transaksi untuk pilihan ini.</div>'}`}
+ </div>`;
 }
+
 function spendingBreakdown(T) {
   const out=T.filter(isExpense), total=sum(out), G=expenseGroups(T);
   if(!total) return '<div class="sec"><h2>Ke mana uangmu pergi</h2></div><div class="list"><div class="empty">Belum ada pengeluaran pada periode ini.</div></div>';
@@ -1053,10 +1184,15 @@ function spendingBreakdown(T) {
     <div class="sec"><h2>Pengeluaran terbesar</h2><span>5 teratas</span></div><div class="top-list">${top.map(g=>`<div class="tl"><div class="tl-head"><span class="ico r">${svg(g.icon)}</span><span class="tl-name">${esc(g.name)}<small>${esc(g.cat)}</small></span><span class="tl-amt num">${rp(g.v)}<small>${Math.round(g.v/total*100)}%</small></span></div><div class="tl-bar"><i style="width:${g.v/top[0].v*100}%;background:var(--blue)"></i></div></div>`).join('')}</div>`;
 }
 
-function render() {
-  categoryCache = null;
-  const today=todayISO(); $('h-date').textContent=DAYN[new Date(today+'T12:00:00+07:00').getUTCDay()]+', '+dayOf(today)+' '+MONTHS[Number(today.slice(5,7))-1]+' '+today.slice(0,4);
-  renderHome(); renderPokok(); renderHarian(); renderTabung(); renderRiwayat(); renderActivityPage();
+function render(){
+ categoryCache=null;const today=todayISO();$('h-date').textContent=DAYN[new Date(today+'T12:00:00+07:00').getUTCDay()]+', '+dayOf(today)+' '+MONTHS[Number(today.slice(5,7))-1]+' '+today.slice(0,4);
+ const focused=document.activeElement,fx=focused&&focused.id,selection=focused&&typeof focused.selectionStart==='number'?[focused.selectionStart,focused.selectionEnd]:null,scroll=window.scrollY;
+ const details=[...document.querySelectorAll('.page details[id][open]')].map(e=>e.id);
+ const skipExpense=activeDropdown&&$('harian').contains(activeDropdown.trigger);
+ renderHome();renderPokok();if(!skipExpense)renderHarian();renderTabung();renderRiwayat();renderActivityPage();
+ details.forEach(id=>{if($(id))$(id).open=true;});
+ if(fx&&$(fx)&&document.activeElement!==$(fx)&&$('scrim').hidden){$(fx).focus({preventScroll:true});if(selection)try{$(fx).setSelectionRange(...selection);}catch(e){}}
+ window.scrollTo(0,scroll);saveFeedback();
 }
 
 // ================= Navigasi & toast =================
@@ -1077,7 +1213,12 @@ function toast(msg, undo, isErr) {
   placeToast();
   clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; undoFn = null; placeToast(); }, undo ? 5000 : 2600);
 }
-$('toast').addEventListener('click', e => { if (e.target.id === 't-undo' && undoFn) { const f = undoFn; undoFn = null; $('toast').hidden = true; f(); render(); toast('Dibatalkan'); } });
+$('toast').addEventListener('click', async e => {
+  if(e.target.id!=='t-undo'||!undoFn)return;
+  const f=undoFn;undoFn=null;e.target.disabled=true;
+  try{await f();$('toast').hidden=true;render();toast('Dibatalkan');}
+  catch(err){toast(err.message||'Tidak dapat membatalkan. Periksa riwayat.',null,true);}
+});
 
 // ================= Lembar (form) =================
 const vv = { h: window.innerHeight, top: 0 };
@@ -1273,127 +1414,107 @@ function bindDescription(root,f) {
   d.onchange=()=>{f.manual=d.value==='__manual';n.hidden=!f.manual;if(f.manual){n.value=f.name||'';n.focus();}else{f.name=d.value;n.value=f.name;}};
   n.oninput=()=>{f.name=n.value;};
 }
-function openTx(init={}) {
-  const edit=init.id?S.tx.find(x=>x.id===init.id):null;
-  if(edit&&txArchivedWallets(edit).length)return openArchivedTransaction(edit,()=>openTx(init),init.back);
-  if(needWallet())return;
-  if(init.id&&!edit){toast('Catatan tidak ditemukan',null,true);return;}
-  const back=typeof init.back==='function'?init.back:null;
-  if(edit&&edit.type==='bill')return openPay(null,null,edit,back);
-  if(edit&&edit.type==='adjust')return openAdjustView(edit);
-  const f=Object.assign({kind:'out',category:'harian',amount:0,wallet:(activeWallets()[0]||{}).id,toWallet:(activeWallets()[1]||activeWallets()[0]||{}).id,goal:(S.goals[0]||{}).id,dir:'save',date:todayISO(),name:'',manual:false},init);
-  if(edit){Object.assign(f,{amount:edit.amount,wallet:edit.wallet,toWallet:edit.toWallet,date:edit.date,name:edit.name,category:categoryOf(edit).id,goal:edit.goal||f.goal});f.kind=edit.type==='in'?'in':['save','withdraw'].includes(edit.type)?'save':edit.type==='transfer'?'transfer':'out';f.dir=edit.type==='withdraw'?'withdraw':'save';}
-  const finish=()=>{closeSheet();render();if(back)back();};
-  const draw=()=>{
-    const k=f.kind;
-    let body=edit?'':`<div class="kind" data-group="kind">${[['out','Keluar'],['in','Masuk'],['save','Tabungan'],['transfer','Pindah']].map(([id,n])=>`<button aria-pressed="${k===id}" data-v="${id}">${n}</button>`).join('')}</div>`;
-    body+=moneyField('f-amt','Jumlah',f.amount);
-    if(k==='out')body+=categoryField(f.category,true)+descriptionField(f)+`<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div>`;
-    else if(k==='in')body+=`<div class="field"><label for="f-name">Keterangan / sumber pemasukan</label><input class="text" id="f-name" value="${esc(f.name)}" placeholder="Contoh: Gaji bulanan atau proyek video"></div><div class="field"><span class="lbl">Masuk ke dompet</span>${walletDropdown('wallet',f.wallet)}</div>`;
-    else if(k==='save'){
-      body+=`<div class="field"><span class="lbl">Arah</span>${chipRow('dir',[{id:'save',name:'Simpan ke tabungan'},{id:'withdraw',name:'Ambil dari tabungan'}],f.dir)}</div><div class="field"><span class="lbl">Tujuan</span>${S.goals.length?chipRow('goal',S.goals.map(g=>({id:g.id,name:g.name,sub:rp(goalSaved(g))})),f.goal):'<p class="hint">Tambahkan tujuan di halaman Tabungan terlebih dahulu.</p>'}</div><div class="field"><span class="lbl">${f.dir==='save'?'Dari dompet':'Masuk ke dompet'}</span>${walletDropdown('wallet',f.wallet)}</div><p class="hint">Perpindahan internal. Tidak dihitung sebagai pendapatan atau pengeluaran.</p>`;
-    }else body+=`<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div><div class="field"><span class="lbl">Ke dompet</span>${walletDropdown('toWallet',f.toWallet)}</div><p class="hint">Pindah dompet tidak mengubah total aset.</p>`;
-    body+=dateField(f)+`<p class="err" id="f-err" hidden></p><button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan'}</button>${edit?'<button class="del" id="f-del">Hapus catatan</button>':''}`;
-    openSheet(edit?(k==='in'?'Ubah uang masuk':k==='out'?'Ubah uang keluar':'Ubah catatan'):'Catat uang',body,root=>{
-      const keep=()=>{const n=root.querySelector('#f-name');if(n)f.name=n.value;};
-      bindMoney(root.querySelector('#f-amt'),v=>{f.amount=v;});
-      bindChips(root,'kind',v=>{keep();f.kind=v;draw();});
-      bindWalletDropdown(root,'wallet',v=>{f.wallet=v;});bindWalletDropdown(root,'toWallet',v=>{f.toWallet=v;});bindChips(root,'goal',v=>{f.goal=v;});bindChips(root,'dir',v=>{keep();f.dir=v;draw();});bindDate(root,f);
-      if(k==='out'){
-        bindDescription(root,f);
-        root.querySelector('#f-category').onchange=e=>{keep();f.category=e.target.value;f.manual=!!f.name;draw();};
-        root.querySelector('#f-addcategory').onclick=()=>{keep();openCatForm(null,draw,id=>{f.category=id;f.manual=!!f.name;});};
-      }
-      root.querySelector('#f-save').onclick=()=>{
-        keep();const err=msg=>{const el=root.querySelector('#f-err');el.textContent=msg;el.hidden=false;};
-        if(!Number.isSafeInteger(f.amount)||f.amount<=0)return err('Isi jumlah yang lebih besar dari 0.');
-        if(!validDate(f.date)||f.date>todayISO())return err('Pilih tanggal yang valid, tidak melebihi hari ini.');
-        if(!activeWallet(f.wallet))return err('Pilih dompet aktif.');
-        if(k==='out'&&!allCats().some(c=>c.id===f.category))return err('Pilih kategori.');
-        if(['out','in'].includes(k)&&!f.name.trim())return err('Isi keterangan atau pilih dari dropdown.');
-        if(k==='transfer'&&(!activeWallet(f.toWallet)||f.toWallet===f.wallet))return err('Pilih dompet tujuan yang berbeda.');
-        if(k==='save'&&!S.goals.some(g=>g.id===f.goal))return err('Pilih tujuan tabungan.');
-        const x=Object.assign({},edit||{});
-        if(k==='out')Object.assign(x,{type:f.category==='harian'?'harian':'other',category:f.category,name:f.name.trim()});
-        else if(k==='in')Object.assign(x,{type:'in',name:f.name.trim()});
-        else if(k==='save'){const g=S.goals.find(g=>g.id===f.goal);Object.assign(x,{type:f.dir,goal:g.id,name:(f.dir==='save'?'Tabung: ':'Ambil: ')+g.name});}
-        else Object.assign(x,{type:'transfer',toWallet:f.toWallet,name:'Pindah ke '+walletName(f.toWallet)});
-        Object.assign(x,{id:edit?edit.id:uid('t'),amount:f.amount,wallet:f.wallet,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime()});
-        if(!edit)x.createdAt=new Date().toISOString();
-        const before=edit?Object.assign({},edit):null;
-        put('tx',x);finish();toast(edit?'Catatan diperbarui':'Catatan ditambahkan',()=>{before?put('tx',before):del('tx',x.id);if(back)back();});
-      };
-      if(edit)root.querySelector('#f-del').onclick=()=>{const before=Object.assign({},edit);del('tx',edit.id);finish();toast('Catatan dihapus',()=>{put('tx',before);if(back)back();});};
-    },back);
-  };
-  draw();
+function openTx(init={}){
+ const edit=init.id?S.tx.find(x=>x.id===init.id):null;
+ if(init.id&&!edit){toast('Catatan tidak ditemukan',null,true);return;}
+ if(edit&&edit.feeFor){const parent=S.tx.find(x=>x.id===edit.feeFor);if(parent)return openTx({id:parent.id,back:init.back});}
+ if(edit&&txArchivedWallets(edit).length)return openArchivedTransaction(edit,()=>openTx(init),init.back);
+ const back=typeof init.back==='function'?init.back:null;
+ if(edit&&edit.type==='goal_adjust')return openGoalAdjust(edit.goal,edit,back);
+ if(needWallet())return;
+ if(edit&&edit.type==='bill')return openPay(null,null,edit,back);
+ if(edit&&edit.type==='adjust')return openAdjustView(edit);
+ const f=Object.assign({kind:'out',category:'harian',amount:0,fee:0,wallet:(activeWallets()[0]||{}).id,toWallet:(activeWallets()[1]||{}).id,goal:(S.goals[0]||{}).id,dir:'save',date:todayISO(),name:'',manual:false},init);
+ if(edit){Object.assign(f,{amount:edit.amount,fee:(linkedFee(S,edit.id)||{}).amount||0,wallet:edit.wallet,toWallet:edit.toWallet,date:edit.date,name:edit.name,category:categoryOf(edit).id,goal:edit.goal||f.goal});f.kind=edit.type==='in'?'in':['save','withdraw'].includes(edit.type)?'save':edit.type==='transfer'?'transfer':'out';f.dir=edit.type==='withdraw'?'withdraw':'save';}
+ const id=edit?edit.id:uid('t'),original=clone(edit),finish=()=>{closeSheet();render();if(back)back();};
+ const draw=()=>{
+  const k=f.kind;
+  let body=edit?'':`<div class="kind" data-group="kind">${[['out','Keluar'],['in','Masuk'],['save','Tabungan'],['transfer','Pindah']].map(([v,n])=>`<button aria-pressed="${k===v}" data-v="${v}">${n}</button>`).join('')}</div>`;
+  body+=moneyField('f-amt',k==='transfer'?'Jumlah transfer':'Jumlah',f.amount);
+  if(k==='out')body+=categoryField(f.category,true)+descriptionField(f)+`<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div>`;
+  else if(k==='in')body+=`<div class="field"><label for="f-name">Keterangan / sumber pemasukan</label><input class="text" id="f-name" value="${esc(f.name)}" placeholder="Contoh: Gaji bulanan atau proyek video"></div><div class="field"><span class="lbl">Masuk ke dompet</span>${walletDropdown('wallet',f.wallet)}</div>`;
+  else if(k==='save')body+=`<div class="field"><span class="lbl">Arah</span>${chipRow('dir',[{id:'save',name:'Simpan ke tabungan'},{id:'withdraw',name:'Ambil dari tabungan'}],f.dir)}</div><div class="field"><span class="lbl">Tujuan</span>${S.goals.length?chipRow('goal',S.goals.map(g=>({id:g.id,name:g.name,sub:rp(goalSaved(g))})),f.goal):'<p class="hint">Tambahkan tujuan tabungan terlebih dahulu.</p>'}</div><div class="field"><span class="lbl">${f.dir==='save'?'Dari dompet':'Masuk ke dompet'}</span>${walletDropdown('wallet',f.wallet)}</div><p class="hint">Perpindahan internal, bukan pendapatan atau belanja.</p>`;
+  else body+=`<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div><div class="field"><span class="lbl">Ke dompet</span>${walletDropdown('toWallet',f.toWallet)}</div>${moneyField('f-fee','Biaya admin (opsional)',f.fee)}<div class="sum-box fee-total"><small>Total dari dompet asal</small><b class="num" id="transfer-total">${rp(f.amount+f.fee)}</b></div><p class="hint">Dompet tujuan menerima jumlah transfer. Hanya biaya admin dihitung sebagai pengeluaran.</p>`;
+  body+=dateField(f)+`<p class="err" id="f-err" hidden></p><button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan'}</button>${edit?'<button class="del" id="f-del">Hapus catatan</button>':''}`;
+  openSheet(edit?'Ubah catatan':'Catat uang',body,root=>{
+   const keep=()=>{const n=root.querySelector('#f-name');if(n)f.name=n.value;};
+   const totals=()=>{const el=root.querySelector('#transfer-total');if(el)el.textContent=rp(f.amount+f.fee);};
+   bindMoney(root.querySelector('#f-amt'),v=>{f.amount=v;totals();});
+   if(k==='transfer')bindMoney(root.querySelector('#f-fee'),v=>{f.fee=v;totals();});
+   bindChips(root,'kind',v=>{keep();f.kind=v;draw();});bindChips(root,'dir',v=>{f.dir=v;draw();});bindChips(root,'goal',v=>{f.goal=v;});
+   bindWalletDropdown(root,'wallet',v=>{f.wallet=v;});bindWalletDropdown(root,'toWallet',v=>{f.toWallet=v;});bindDate(root,f);
+   if(k==='out'){bindDescription(root,f);root.querySelector('#f-category').onchange=e=>{keep();f.category=e.target.value;f.manual=!!f.name;draw();};root.querySelector('#f-addcategory').onclick=()=>{keep();openCatForm(null,draw,id=>{f.category=id;});};}
+   root.querySelector('#f-save').onclick=()=>{
+    keep();formCommit(root,data=>{
+     if(!Number.isSafeInteger(f.amount)||f.amount<=0)throw new Error('Isi jumlah yang lebih besar dari 0.');
+     if(!ArtoModel.validDate(f.date)||f.date>todayISO())throw new Error('Pilih tanggal yang valid, tidak melebihi hari ini.');
+     requireWallet(data,f.wallet);if(k==='transfer'){requireWallet(data,f.toWallet);if(f.toWallet===f.wallet)throw new Error('Pilih dompet tujuan yang berbeda.');}
+     if(['in','out'].includes(k)&&!f.name.trim())throw new Error('Isi keterangan.');
+     if(k==='out'&&!ArtoModel.categories(data).some(c=>c.id===f.category))throw new Error('Pilih kategori.');
+     if(!Number.isSafeInteger(f.fee)||f.fee<0)throw new Error('Biaya admin tidak valid.');
+     const x=Object.assign({},original||{},{id,amount:f.amount,wallet:f.wallet,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime(),updatedAt:new Date().toISOString()});
+     if(!edit)x.createdAt=x.updatedAt;
+     if(k==='out')Object.assign(x,{type:f.category==='harian'?'harian':'other',category:f.category,name:f.name.trim()});
+     else if(k==='in')Object.assign(x,{type:'in',name:f.name.trim()});
+     else if(k==='save'){const g=data.goals.find(g=>g.id===f.goal);if(!g)throw new Error('Pilih tujuan tabungan.');Object.assign(x,{type:f.dir,goal:g.id,name:(f.dir==='save'?'Tabung: ':'Ambil: ')+g.name});}
+     else Object.assign(x,{type:'transfer',toWallet:f.toWallet,name:'Pindah ke '+data.wallets.find(w=>w.id===f.toWallet).name});
+     return paymentChanges(data,x,k==='transfer'?f.fee:0,original);
+    },undo=>{finish();toast(edit?'Catatan diperbarui':'Catatan tersimpan',async()=>{await undo();render();if(back)back();});});
+   };
+   if(edit)root.querySelector('#f-del').onclick=()=>formCommit(root,data=>deletionChanges(data,original),undo=>{finish();toast('Catatan dan biaya terkait dihapus.',undo);},'f-del');
+  },back);
+ };draw();
 }
 
-function openAdjustView(x) {
-  if(txArchivedWallets(x).length)return openArchivedTransaction(x,()=>openAdjustView(x));
-  openSheet('Penyesuaian saldo', `<p class="hint" style="font-size:14.5px">${esc(walletName(x.wallet))} ${x.amount >= 0 ? 'ditambah' : 'dikurangi'} ${rp(Math.abs(x.amount))} pada ${dShort(x.date)}, supaya sama dengan saldo sebenarnya.</p><button class="del" id="f-del">Hapus penyesuaian</button>`, root => {
-    root.querySelector('#f-del').onclick = () => { const s = Object.assign({}, x); del('tx', x.id); closeSheet(); render(); toast('Penyesuaian dihapus', () => put('tx', s)); };
-  });
+function openAdjustView(x){
+ if(txArchivedWallets(x).length)return openArchivedTransaction(x,()=>openAdjustView(x));
+ const original=clone(x);openSheet('Penyesuaian saldo',`<p class="hint">${esc(walletName(x.wallet))}: ${rp(x.amount)} pada ${dShort(x.date)}.</p><p class="err" id="f-err" hidden></p><button class="del" id="f-del">Hapus penyesuaian</button>`,root=>{
+ root.querySelector('#f-del').onclick=()=>formCommit(root,data=>deletionChanges(data,original),undo=>{closeSheet();render();toast('Penyesuaian dihapus',undo);},'f-del');
+ });
 }
 
 // ---- Bayar tagihan ----
-function openPay(billId,m,edit,back) {
-  if(edit&&txArchivedWallets(edit).length)return openArchivedTransaction(edit,()=>openPay(billId,m,edit,back),back);
-  if(needWallet())return;
-  const b=edit?S.bills.find(y=>y.id===edit.bill)||{id:edit.bill,name:edit.name,amount:edit.billTotal||edit.amount,category:edit.category}:S.bills.find(y=>y.id===billId);
-  if(!b){toast('Tagihan tidak ditemukan',null,true);return;}
-  const bm=edit?edit.billMonth:m;
-  if(!ArtoModel.validMonth(bm)){toast('Periode tagihan tidak valid',null,true);return;}
-  const st=billState(b,bm),originalPeriod=JSON.stringify((b.periodTotals||{})[bm]||null);
-  if(!edit&&st.settled){toast('Tagihan periode ini sudah lunas. Ubah pembayaran melalui riwayat.');return;}
-  const f={amount:edit?edit.amount:st.estimated?0:st.remaining,total:st.estimated?0:st.total,wallet:edit?edit.wallet:(activeWallets()[0]||{}).id,
-    date:edit?edit.date:todayISO(),category:edit?categoryOf(edit).id:(b.category||'tagihan_lama'),name:edit?edit.name:b.name,manual:false};
-  const finish=()=>{closeSheet();render();if(back)back();};
-  const draw=()=>{
-    const others=ArtoModel.billPayments(S,b,bm,todayISO()).filter(x=>!edit||x.id!==edit.id),otherPaid=sum(others);
-    const totalInput=moneyField('f-total',b.variable?'Total tagihan sebenarnya':'Total tagihan periode ini',f.total);
-    const totalEditor=b.variable?totalInput+`<p class="hint">Isi jumlah sebenarnya untuk ${mLabel(bm)}, bukan perkiraan. Berlaku hanya untuk periode ini.</p>`:
-      `<details class="bill-period-edit"><summary>Ubah total tagihan periode ini</summary>${totalInput}<p class="hint">Perubahan ini tidak mengubah nominal rutin bulan berikutnya.</p></details>`;
-    openSheet(edit?'Ubah pembayaran':'Bayar tagihan',`<div class="sum-box"><small>${esc(b.name)} - ${mLabel(bm)}</small><b class="num">${rp(f.total||st.total)}</b><small>${st.estimated?'Perkiraan; isi total sebenarnya di bawah.':'Total tagihan'}<br>Sudah dibayar ${rp(st.paid)}</small></div>
-      ${totalEditor}${moneyField('f-amt',edit?'Jumlah pembayaran ini':'Bayar sekarang',f.amount)}<div class="payment-state" id="payment-state" aria-live="polite"></div>
-      ${categoryField(f.category)}${descriptionField(f)}<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div>${dateField(f)}
-      <p class="err" id="f-err" hidden></p><p class="hint" style="margin-top:14px">Hanya jumlah yang dibayar mengurangi dompet. Sisa tetap muncul sampai lunas.</p>
-      <button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan pembayaran'}</button>${edit?'<button class="del" id="f-del">Hapus pembayaran ini</button>':''}`,root=>{
-      const preview=()=>{const remaining=f.total-otherPaid-f.amount,el=root.querySelector('#payment-state');el.classList.toggle('over',remaining<0);
-        el.innerHTML=!f.total?'<small>Isi total tagihan sebenarnya untuk menghitung sisa.</small>':remaining<0?`<small>Lebih bayar</small><b class="num">${rp(-remaining)}</b><small>Tidak otomatis mengurangi tagihan bulan berikutnya.</small>`:remaining===0&&otherPaid+f.amount>0?'<small>Status setelah disimpan</small><b>Lunas</b>':`<small>Sisa setelah pembayaran ini</small><b class="num">${rp(Math.max(0,remaining))}</b><small>${otherPaid+f.amount>0?'Dibayar sebagian':'Belum dibayar'}</small>`;};
-      bindMoney(root.querySelector('#f-amt'),v=>{f.amount=v;preview();});
-      bindMoney(root.querySelector('#f-total'),v=>{f.total=v;preview();});
-      bindWalletDropdown(root,'wallet',v=>{f.wallet=v;});bindDate(root,f);bindDescription(root,f);preview();
-      const keep=()=>{f.name=root.querySelector('#f-name').value;};
-      root.querySelector('#f-category').onchange=e=>{keep();f.category=e.target.value;f.manual=!!f.name;draw();};
-      root.querySelector('#f-save').onclick=()=>{
-        keep();const err=msg=>{const el=root.querySelector('#f-err');el.hidden=false;el.textContent=msg;};
-        if(!Number.isSafeInteger(f.total)||f.total<=0)return err('Isi total tagihan sebenarnya, lebih besar dari 0.');
-        if(!Number.isSafeInteger(f.amount)||f.amount<=0)return err('Isi jumlah pembayaran, lebih besar dari 0.');
-        if(!validDate(f.date)||f.date>todayISO())return err('Pilih tanggal yang valid.');
-        if(!f.name.trim())return err('Isi keterangan.');
-        if(!activeWallet(f.wallet))return err('Pilih dompet aktif.');
-        const current=S.bills.find(y=>y.id===b.id);
-        if(current&&JSON.stringify((current.periodTotals||{})[bm]||null)!==originalPeriod)return err('Total tagihan berubah di perangkat lain. Buka ulang formulir ini.');
-        const stillPaid=sum(ArtoModel.billPayments(S,current||b,bm,todayISO()).filter(x=>!edit||x.id!==edit.id));
-        // Recheck against current data so a second tab cannot blindly add another final payment.
-        if(!edit&&stillPaid>=f.total)return err('Tagihan sudah lunas. Periksa riwayat pembayaran.');
-        const stamp=new Date().toISOString();
-        const x=Object.assign({},edit||{},{id:edit?edit.id:uid('t'),type:'bill',bill:b.id,billMonth:bm,billTotal:f.total,name:f.name.trim(),category:f.category,
-          amount:f.amount,wallet:f.wallet,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime(),updatedAt:stamp});
-        if(!edit)x.createdAt=stamp;
-        const changes=[{col:'tx',id:x.id,doc:x}];
-        if(current){const doc=Object.assign({},current,{periodTotals:Object.assign({},current.periodTotals||{},{[bm]:{amount:f.total,confirmed:true,updatedAt:stamp}})});changes.push({col:'bills',id:doc.id,doc});}
-        root.querySelector('#f-save').disabled=true;
-        const undo=writeChanges(changes);finish();const remaining=Math.max(0,f.total-stillPaid-f.amount);
-        toast(remaining?'Pembayaran disimpan. Sisa '+rp(remaining):'Tagihan lunas',()=>{undo();if(back)back();});
-      };
-      if(edit)root.querySelector('#f-del').onclick=()=>{
-        const undo=writeChanges([{col:'tx',id:edit.id,doc:null}]);finish();toast('Pembayaran dihapus. Sisa tagihan dihitung ulang.',()=>{undo();if(back)back();});
-      };
-    },back);
-  };
-  draw();
+function openPay(billId,m,edit,back){
+ if(edit&&txArchivedWallets(edit).length)return openArchivedTransaction(edit,()=>openPay(billId,m,edit,back),back);
+ if(needWallet())return;
+ const b=edit?S.bills.find(y=>y.id===edit.bill)||{id:edit.bill,name:edit.name,amount:edit.billTotal||edit.amount,category:edit.category}:S.bills.find(y=>y.id===billId);
+ if(!b){toast('Tagihan tidak ditemukan',null,true);return;}
+ const bm=edit?edit.billMonth:m;if(!ArtoModel.validMonth(bm)){toast('Periode tidak valid',null,true);return;}
+ const st=billState(b,bm),original=clone(edit),id=edit?edit.id:uid('t'),periodOriginal=stable((b.periodTotals||{})[bm]||null);
+ if(!edit&&st.settled){toast(st.cancelled?'Tagihan ini dibatalkan.':'Tagihan sudah lunas. Ubah melalui riwayat.');return;}
+ const f={amount:edit?edit.amount:st.estimated?0:st.remaining,total:st.estimated?0:st.total,fee:edit?(linkedFee(S,edit.id)||{}).amount||0:0,wallet:edit?edit.wallet:(activeWallets()[0]||{}).id,date:edit?edit.date:todayISO(),category:edit?categoryOf(edit).id:b.category||'tagihan_lama',name:edit?edit.name:b.name,manual:false};
+ const finish=()=>{closeSheet();render();if(back)back();};
+ const draw=()=>{
+  const otherPaid=sum(ArtoModel.billPayments(S,b,bm,todayISO()).filter(x=>!edit||x.id!==edit.id));
+  const totalInput=moneyField('f-total',b.variable?'Total tagihan sebenarnya':'Total tagihan periode ini',f.total);
+  const totalEditor=b.variable?totalInput+'<p class="hint">Isi jumlah sebenarnya, bukan perkiraan.</p>':`<details class="bill-period-edit"><summary>Ubah total tagihan periode ini</summary>${totalInput}<p class="hint">Tidak mengubah nominal rutin bulan berikutnya.</p></details>`;
+  openSheet(edit?'Ubah pembayaran':'Bayar tagihan',`<div class="sum-box"><small>${esc(b.name)} - ${mLabel(bm)}</small><b class="num">${st.unknown?'Jumlah belum diisi':rp(st.total)}</b><small>Sudah dibayar ${rp(st.paid)}</small></div>${totalEditor}${moneyField('f-amt',edit?'Jumlah pembayaran ini':'Bayar sekarang (tanpa admin)',f.amount)}${moneyField('f-fee','Biaya admin (opsional)',f.fee)}
+  <div class="ledger fee-total"><div class="lg total"><span>Total dari dompet</span><b class="num" id="pay-wallet-total">${rp(f.amount+f.fee)}</b></div></div><div class="payment-state" id="payment-state" aria-live="polite"></div>
+  ${categoryField(f.category)}${descriptionField(f)}<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div>${dateField(f)}
+  <p class="hint">Biaya admin terpisah dari pokok tagihan. Sisa tetap muncul sampai lunas.</p><p class="err" id="f-err" hidden></p><button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan pembayaran'}</button>${edit?'<button class="del" id="f-del">Hapus pembayaran ini</button>':''}`,root=>{
+   const preview=()=>{const r=f.total-otherPaid-f.amount,el=root.querySelector('#payment-state');el.classList.toggle('over',r<0);el.innerHTML=!f.total?'<small>Isi total tagihan sebenarnya.</small>':r<0?`<small>Lebih bayar</small><b>${rp(-r)}</b><small>Tidak otomatis mengurangi periode berikutnya.</small>`:r===0?'<small>Status setelah disimpan</small><b>Lunas</b>':`<small>Sisa setelah pembayaran</small><b class="num">${rp(r)}</b><small>${otherPaid+f.amount?'Dibayar sebagian':'Belum dibayar'}</small>`;root.querySelector('#pay-wallet-total').textContent=rp(f.amount+f.fee);};
+   bindMoney(root.querySelector('#f-amt'),v=>{f.amount=v;preview();});bindMoney(root.querySelector('#f-total'),v=>{f.total=v;preview();});bindMoney(root.querySelector('#f-fee'),v=>{f.fee=v;preview();});
+   bindWalletDropdown(root,'wallet',v=>{f.wallet=v;});bindDate(root,f);bindDescription(root,f);preview();
+   const keep=()=>{f.name=root.querySelector('#f-name').value;};root.querySelector('#f-category').onchange=e=>{keep();f.category=e.target.value;f.manual=!!f.name;draw();};
+   root.querySelector('#f-save').onclick=()=>{keep();formCommit(root,data=>{
+    if(!Number.isSafeInteger(f.total)||f.total<=0)throw new Error('Isi total tagihan sebenarnya.');
+    if(!Number.isSafeInteger(f.amount)||f.amount<=0||!Number.isSafeInteger(f.fee)||f.fee<0)throw new Error('Periksa jumlah pembayaran dan biaya admin.');
+    if(!ArtoModel.validDate(f.date)||f.date>todayISO())throw new Error('Pilih tanggal yang valid.');if(!f.name.trim())throw new Error('Isi keterangan.');requireWallet(data,f.wallet);
+    const current=data.bills.find(v=>v.id===b.id),bill=current||b;
+    if(!edit&&!current)throw new Error('Tagihan tidak lagi tersedia. Buka ulang daftar.');
+    if(current&&stable((current.periodTotals||{})[bm]||null)!==periodOriginal)throw new Error('Total tagihan berubah. Buka ulang formulir.');
+    const state=ArtoModel.billStatus(data,bill,bm,todayISO());if(state.cancelled)throw new Error('Tagihan sudah dibatalkan.');
+    const other=sum(state.payments.filter(p=>p.id!==id));
+    if(!edit&&other>=f.total)throw new Error('Tagihan sudah lunas. Periksa riwayat.');
+    if(other!==otherPaid)throw new Error('Ada pembayaran lain yang baru tersimpan. Buka ulang untuk melihat sisa terbaru.');
+    const stamp=new Date().toISOString(),x=Object.assign({},original||{},{id,type:'bill',bill:bill.id,billMonth:bm,billTotal:f.total,amount:f.amount,wallet:f.wallet,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime(),category:f.category,name:f.name.trim(),updatedAt:stamp});if(!edit)x.createdAt=stamp;
+    const changes=paymentChanges(data,x,f.fee,original);
+    if(current)changes.push({col:'bills',id:current.id,doc:Object.assign({},current,{periodTotals:Object.assign({},current.periodTotals||{},{[bm]:{amount:f.total,confirmed:true,updatedAt:stamp}})})});
+    return changes;
+   },undo=>{finish();const state=billState(S.bills.find(v=>v.id===b.id)||b,bm);toast(state.remaining?'Pembayaran tersimpan. Sisa '+rp(state.remaining):'Tagihan lunas',undo);});};
+   if(edit)root.querySelector('#f-del').onclick=()=>formCommit(root,data=>deletionChanges(data,original),undo=>{finish();toast('Pembayaran dan biaya admin dihapus. Sisa dihitung ulang.',undo);},'f-del');
+  },back);
+ };draw();
 }
 
 // ---- Dompet ----
@@ -1409,11 +1530,12 @@ function openWalletList(back) {
     root.querySelector('#wl-tr').onclick=()=>{if(list.length<2){toast('Butuh minimal dua dompet aktif untuk pindah uang');return;}openTx({kind:'transfer',back:again});};
   },back);
 }
-function restoreWallet(w,back) {
-  const current=S.wallets.find(q=>q.id===w.id);if(!current)return;
-  const undo=writeChanges([{col:'wallets',id:w.id,doc:Object.assign({},current,{archived:false,restoredAt:new Date().toISOString()})}]);
-  render();if(back)back();else openWalletList();toast('Dompet dipulihkan. Pemindahan atau penyesuaian sebelumnya tetap tercatat.',undo);
+async function restoreWallet(w,back){
+ if(!w)return;try{const original=clone(w),undo=await commitFinancial(data=>{expectUnchanged(data,'wallets',original);return [{col:'wallets',id:w.id,doc:Object.assign({},original,{archived:false,restoredAt:new Date().toISOString()})}];});
+ render();if(back)back();else openWalletList();toast('Dompet dipulihkan. Transaksi penutupan tetap tercatat.',undo);
+ }catch(e){toast(e.message,null,true);}
 }
+
 function openArchivedTransaction(x,retry,back) {
   const closed=txArchivedWallets(x);
   openSheet('Riwayat dompet dihapus',`<div class="sum-box"><small>${esc(x.name)} - ${dShort(x.date)}</small><b class="num">${rp(x.amount)}</b></div>
@@ -1435,13 +1557,12 @@ function openWalletForm(id,back) {
     ${w?`<div class="sum-box" style="margin-top:16px"><small>Saldo sekarang</small><b class="num">${rp(bal)}</b></div><div class="goal-btns"><button class="gbtn" id="f-adj">Sesuaikan saldo</button><button class="gbtn" id="f-tr">Pindah uang</button></div>`:moneyField('f-init','Saldo awal',0)+'<p class="hint">Boleh dikosongkan kalau mulai dari Rp 0.</p>'}
     <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${w?'Simpan nama':'Tambah dompet'}</button>${w?'<button class="del" id="f-del">Hapus dompet</button>':''}`,root=>{
     if(!w)bindMoney(root.querySelector('#f-init'),v=>{f.initial=v;});
-    root.querySelector('#f-save').onclick=()=>{
-      const n=root.querySelector('#f-name').value.trim();if(!n){root.querySelector('#f-err').textContent='Beri nama dompetnya.';root.querySelector('#f-err').hidden=false;return;}
-      const current=w?S.wallets.find(x=>x.id===w.id):null;
-      if(current&&current.archived){openWalletForm(w.id,back);return;}
-      const doc=w?Object.assign({},current||w,{name:n}):{id:uid('w'),name:n,initial:f.initial,initialDate:todayISO(),order:S.wallets.length,createdAt:new Date().toISOString()};
-      put('wallets',doc);render();toast(w?'Nama dompet disimpan':'Dompet '+n+' ditambahkan');if(back)back();else closeSheet();
-    };
+    root.querySelector('#f-save').onclick=()=>formCommit(root,data=>{
+      const n=root.querySelector('#f-name').value.trim();if(!n)throw new Error('Isi nama dompet.');expectUnchanged(data,'wallets',w);
+      if(w)requireWallet(data,w.id);
+      const doc=w?Object.assign({},w,{name:n}):{id:uid('w'),name:n,initial:f.initial,initialDate:todayISO(),order:data.wallets.length,createdAt:new Date().toISOString()};
+      return [{col:'wallets',id:doc.id,doc}];
+    },undo=>{render();toast(w?'Nama dompet disimpan':'Dompet ditambahkan',undo);back?back():closeSheet();});
     if(w){
       root.querySelector('#f-adj').onclick=()=>openAdjust(w.id,()=>openWalletForm(w.id,back));
       root.querySelector('#f-tr').onclick=()=>{if(activeWallets().length<2){toast('Tambahkan dompet tujuan terlebih dahulu');return;}openTx({kind:'transfer',wallet:w.id,toWallet:activeWallets().find(x=>x.id!==w.id).id,back:()=>openWalletForm(w.id,back)});};
@@ -1488,99 +1609,102 @@ function openWalletDelete(id,back) {
         changes.push({col:'tx',id:tx.id,doc:tx});doc.closureTxId=tx.id;
       }
       changes.push({col:'wallets',id,doc});root.querySelector('#wallet-close').disabled=true;
-      const undo=writeChanges(changes);closeSheet();render();if(back)back();toast('Dompet dihapus. Riwayat tetap tersimpan.',undo);
+      root.querySelector('#wallet-close').disabled=false;
+      formCommit(root,data=>{const server=requireWallet(data,id);expectUnchanged(data,'wallets',current);
+        if(ArtoModel.walletAt(data,server,date)!==bal)throw new Error('Saldo berubah. Buka ulang penghapusan.');
+        if(bal&&handling==='transfer')requireWallet(data,target);
+        if(bal<0&&handling==='transfer'&&ArtoModel.walletAt(data,data.wallets.find(w=>w.id===target),date)<Math.abs(bal))throw new Error('Saldo sumber tidak cukup.');
+        if(data.tx.some(x=>(x.wallet===id||x.toWallet===id)&&x.date>date))throw new Error('Ada transaksi mendatang. Periksa sebelum menghapus dompet.');
+        return changes;
+      },undo=>{closeSheet();render();if(back)back();toast('Dompet dihapus. Riwayat tetap tersimpan.',undo);},'wallet-close');
     };
   },()=>openWalletForm(id,back));
 }
 
-function openAdjust(wid, back) {
-  if(!activeWallet(wid)){openWalletForm(wid,back);return;}
-  const w = S.wallets.find(x => x.id === wid), cur = walletBal(w), f = { real: 0, date: todayISO() };
-  openSheet('Sesuaikan saldo ' + w.name, `<p class="hint" style="font-size:14px">Menurut Arto saldonya ${rp(cur)}. Isi saldo yang sebenarnya, nanti selisihnya dicatat sebagai penyesuaian.</p>
-    ${moneyField('f-real', 'Saldo sebenarnya', 0)}<p class="hint" id="f-diff"></p><p class="err" id="f-err" hidden></p><button class="save" id="f-save">Sesuaikan</button>`, root => {
-    bindMoney(root.querySelector('#f-real'), v => { f.real = v; const d = v - cur; root.querySelector('#f-diff').textContent = d ? 'Selisih ' + (d > 0 ? '+' : '−') + rp(Math.abs(d)).replace('−', '') : 'Sudah sama.'; });
-    root.querySelector('#f-save').onclick = () => {
-      if(!activeWallet(w.id)){const e=root.querySelector('#f-err');e.hidden=false;e.textContent='Dompet ini sudah dihapus. Pulihkan terlebih dahulu.';return;}
-      const raw = root.querySelector('#f-real').value.replace(/\D/g, '');
-      if (raw === '') { const e = root.querySelector('#f-err'); e.textContent = 'Isi saldo sebenarnya (boleh 0).'; e.hidden = false; return; }
-      const d = f.real - cur; if (!d) { toast('Saldo sudah sama'); return back ? back() : closeSheet(); }
-      const x = { id: uid('t'), type: 'adjust', name: 'Penyesuaian saldo', amount: d, wallet: w.id, date: f.date, month: monthOf(f.date), time: nowTime() };
-      put('tx', x); render(); toast('Saldo ' + w.name + ' disesuaikan', () => del('tx', x.id)); back ? back() : closeSheet();
-    };
-  }, back);
+function openAdjust(wid,back){
+ if(!activeWallet(wid)){openWalletForm(wid,back);return;}
+ const w=clone(S.wallets.find(x=>x.id===wid)),cur=walletBal(w),f={real:cur};
+ openSheet('Sesuaikan saldo '+w.name,`<p class="hint">Saldo tercatat ${rp(cur)}. Selisih dicatat sebagai koreksi, bukan pemasukan atau belanja.</p>${moneyField('f-real','Saldo sebenarnya',cur)}<p class="err" id="f-err" hidden></p><button class="save" id="f-save">Sesuaikan</button>`,root=>{
+ bindMoney(root.querySelector('#f-real'),v=>{f.real=v;});root.querySelector('#f-save').onclick=()=>formCommit(root,data=>{
+ const wallet=requireWallet(data,w.id);if(ArtoModel.walletAt(data,wallet,todayISO())!==cur)throw new Error('Saldo berubah. Buka ulang penyesuaian.');if(root.querySelector('#f-real').value.trim()===''||!Number.isSafeInteger(f.real))throw new Error('Isi saldo sebenarnya, boleh 0.');const x={id:uid('t'),type:'adjust',name:'Penyesuaian saldo',amount:f.real-cur,wallet:w.id,date:todayISO(),month:curMonth(),time:nowTime()};return x.amount?[{col:'tx',id:x.id,doc:x}]:[];
+ },undo=>{render();back?back():closeSheet();toast('Saldo disesuaikan',undo);});
+ },back);
 }
 
 // ---- Tagihan ----
-function openBillManager(back) {
-  const list = S.bills.slice().sort((a, b) => (Number(a.dueDay) || 0) - (Number(b.dueDay) || 0));
-  const cm = curMonth(), monthly = list.filter(b => Number(b.freq) === 1), other = list.filter(b => Number(b.freq) !== 1);
-  const perMonth = sum(monthly), thisMonth = sum(list.filter(b => billDue(b, cm)));
-  const perYearOther = sum(other, b => (Number(b.amount) || 0) * (12 / (Number(b.freq) || 12)));
-  const summary = list.length ? `<div class="sum-row"><div class="sum-box"><small>Total per bulan</small><b class="num">${rp(perMonth)}</b><small>${monthly.length} tagihan bulanan</small></div>
-      <div class="sum-box"><small>Jatuh tempo ${mLabel(cm)}</small><b class="num">${rp(thisMonth)}</b><small>${list.filter(b => billDue(b, cm)).length} tagihan</small></div></div>
-      ${other.length ? `<p class="hint">Tagihan tidak bulanan (${other.length}): ${rp(perYearOther)} per tahun, kira-kira ${rp(perYearOther / 12)} per bulan.</p>` : ''}<div style="height:12px"></div>` : '';
-  openSheet('Kelola tagihan', `${summary}<div class="set-group">${list.length ? list.map(b => `<button class="set-row" data-bill="${b.id}"><span class="ico b" style="width:36px;height:36px">${svg('receipt')}</span><span class="grow"><span class="t1">${esc(b.name)}</span><span class="t2">${b.variable ? 'Kira-kira ' : ''}${rp(b.amount)}, tgl ${b.dueDay}, ${FREQ.find(q => q.id === Number(b.freq)).name.toLowerCase()}</span></span><span class="chev">${svg('right', 2.6)}</span></button>`).join('') : '<div class="empty">Belum ada tagihan.</div>'}</div>
-    <button class="save" id="f-add">Tambah tagihan</button>`, root => {
-    root.querySelector('#f-add').onclick = () => openBillForm(null, () => openBillManager(back));
-    root.querySelectorAll('[data-bill]').forEach(r => r.onclick = () => openBillForm(r.dataset.bill, () => openBillManager(back)));
-  }, back);
+function openBillManager(back){
+ const m=curMonth(),list=S.bills.slice().sort((a,b)=>Number(a.dueDay)-Number(b.dueDay)),monthly=list.filter(b=>b.active!==false&&(!b.endMonth||b.endMonth>=m)&&Number(b.freq)===1);
+ openSheet('Kelola tagihan',`<div class="sum-box"><small>Nominal rutin bulanan aktif (sebelum pembayaran)</small><b class="num">${rp(sum(monthly))}</b><small>${monthly.length} jadwal bulanan</small></div><div class="set-group" style="margin-top:14px">${list.length?list.map(b=>`<button class="set-row" data-bill="${esc(b.id)}"><span class="ico b">${svg('receipt')}</span><span class="grow"><span class="t1">${esc(b.name)}</span><span class="t2">${b.variable?'Perkiraan ':''}${rp(b.amount)} - ${(FREQ.find(x=>x.id===Number(b.freq))||{name:'Jadwal lama'}).name}${b.endMonth?' - berakhir '+mLabel(b.endMonth):''}</span></span><span class="chev">${svg('right')}</span></button>`).join(''):'<div class="empty">Belum ada tagihan.</div>'}</div><button class="save" id="f-add">Tambah tagihan</button>`,root=>{
+ const again=()=>openBillManager(back);root.querySelector('#f-add').onclick=()=>openBillForm(null,again);root.querySelectorAll('[data-bill]').forEach(el=>el.onclick=()=>openBillForm(el.dataset.bill,again));
+ },back);
 }
-function openBillForm(id, back) {
-  const b = id ? S.bills.find(x => x.id === id) : null, cm = curMonth();
-  const f = b ? Object.assign({}, b) : { name: '', amount: 0, variable: false, dueDay: 1, freq: 1, startMonth: cm, category:'rumah' }; f.category = f.category || (b ? 'tagihan_lama' : 'rumah');
-  const firstMonthEditable = !b || (b.createdMonth || cm) === cm;
-  f.thisMonth = b ? (b.startMonth || cm) <= cm : null;   // null = ikuti tanggal jatuh tempo
-  const months = Array.from({ length: 12 }, (_, i) => shiftM(cm, i));
-  if (f.startMonth && !months.includes(f.startMonth)) months.unshift(f.startMonth);
-  const draw = () => openSheet(b ? 'Ubah tagihan' : 'Tambah tagihan', `<div class="field"><label for="f-name">Nama tagihan</label><input id="f-name" class="text" value="${esc(f.name)}" placeholder="Contoh: Internet rumah, STNK motor" autocomplete="off"></div>
-    ${categoryField(f.category)}${moneyField('f-amt', f.variable ? 'Perkiraan jumlah' : 'Jumlah', f.amount)}
-    <div class="field"><button class="toggle" id="f-var" role="switch" aria-checked="${!!f.variable}"><span class="grow"><span class="t1">Jumlahnya berubah-ubah</span><span class="t2">Isi jumlah sebenarnya saat membayar</span></span><span class="sw"><i></i></span></button></div>
-    <div class="field"><label for="f-due">Jatuh tempo tanggal</label><select id="f-due" class="sel">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${Number(f.dueDay) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
-    <div class="field"><span class="lbl">Berulang</span>${chipRow('freq', FREQ, f.freq)}</div>
-    ${Number(f.freq) === 1 && firstMonthEditable ? `<div class="field"><button class="toggle" id="f-this" role="switch" aria-checked="${f.thisMonth === null ? f.dueDay >= dayOf(todayISO()) : f.thisMonth}"><span class="grow"><span class="t1">Tagih mulai bulan ini</span><span class="t2">Matikan kalau tagihan ${mLabel(cm)} sudah dibayar sebelum memakai Arto</span></span><span class="sw"><i></i></span></button></div>` : ''}
-    <div class="field" ${Number(f.freq) === 1 ? 'hidden' : ''} id="f-startf"><label for="f-start">Jatuh tempo berikutnya</label><select id="f-start" class="sel">${months.map(mm => `<option value="${mm}" ${mm === f.startMonth ? 'selected' : ''}>${mLabel(mm)}</option>`).join('')}</select></div>
-    <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${b ? 'Simpan perubahan' : 'Tambah tagihan'}</button>${b ? '<button class="del" id="f-del">Hapus tagihan</button>' : ''}`, root => {
-    const keep = () => { f.name = root.querySelector('#f-name').value; f.dueDay = Number(root.querySelector('#f-due').value); f.startMonth = root.querySelector('#f-start').value; f.category = root.querySelector('#f-category').value; };
-    bindMoney(root.querySelector('#f-amt'), v => { f.amount = v; });
-    root.querySelector('#f-var').onclick = () => { keep(); f.variable = !f.variable; draw(); };
-    const ft = root.querySelector('#f-this'); if (ft) ft.onclick = () => { keep(); f.thisMonth = ft.getAttribute('aria-checked') !== 'true'; draw(); };
-    root.querySelector('#f-due').addEventListener('change', () => { if (f.thisMonth === null) { keep(); draw(); } });
-    bindChips(root, 'freq', v => { keep(); f.freq = Number(v); if (f.freq === 1) f.startMonth = cm; draw(); });
-    root.querySelector('#f-save').onclick = () => {
-      keep();
-      const err = m => { const e = root.querySelector('#f-err'); e.textContent = m; e.hidden = false; };
-      if (!f.name.trim()) return err('Beri nama tagihannya.');
-      if (!f.amount && !f.variable) return err('Isi jumlah tagihannya.');
-      let start = f.startMonth;
-      if (Number(f.freq) === 1) {
-        if (firstMonthEditable) { const thisM = f.thisMonth === null ? f.dueDay >= dayOf(todayISO()) : f.thisMonth; start = thisM ? cm : shiftM(cm, 1); }
-        else start = (b && b.startMonth) || cm;
-      }
-      const doc = Object.assign({}, b || {}, { id: b ? b.id : uid('b'), name: f.name.trim(), category:f.category, amount: f.amount, variable: !!f.variable, dueDay: f.dueDay, freq: Number(f.freq), startMonth: start, createdMonth: b ? b.createdMonth || cm : cm, active: true });
-      put('bills', doc); render(); toast(b ? 'Tagihan diperbarui' : 'Tagihan ' + doc.name + ' ditambahkan'); back ? back() : closeSheet();
-    };
-    if (b) root.querySelector('#f-del').onclick = () => { const s = Object.assign({}, b); del('bills', b.id); render(); toast('Tagihan dihapus', () => put('bills', s)); back ? back() : closeSheet(); };
-  }, back);
-  draw();
+function openBillForm(id,back){
+ const original=id?clone(S.bills.find(b=>b.id===id)):null,cm=curMonth(),f=Object.assign({name:'',amount:0,variable:false,dueDay:1,freq:1,startMonth:cm,category:'rumah'},original||{});
+ f.category=f.category||'tagihan_lama';const locked=!!original&&original.startMonth<=cm;
+ const finish=()=>{render();back?back():closeSheet();};
+ const draw=()=>openSheet(original?'Ubah tagihan':'Tambah tagihan',`<div class="field"><label for="f-name">Nama tagihan</label><input class="text" id="f-name" value="${esc(f.name)}" placeholder="Contoh: Internet rumah"></div>${categoryField(f.category)}${moneyField('f-amt',f.variable?'Perkiraan jumlah':'Jumlah rutin',f.amount)}
+ <div class="field"><button class="toggle" id="f-var" role="switch" aria-checked="${!!f.variable}"><span class="grow"><span class="t1">Jumlahnya berubah-ubah</span><span class="t2">Isi total sebenarnya saat membayar</span></span><span class="sw"><i></i></span></button></div>
+ <div class="field"><label for="f-due">Jatuh tempo tanggal</label><select class="sel" data-artoselect id="f-due">${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${Number(f.dueDay)===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div>
+ ${locked?`<div class="note good"><span>Jadwal: ${(FREQ.find(v=>v.id===Number(f.freq))||{name:'Jadwal lama'}).name}, mulai ${mLabel(f.startMonth)}. Untuk jadwal baru, hentikan pengulangan lalu buat tagihan baru.</span></div>`:`<div class="field"><span class="lbl">Berulang</span>${chipRow('freq',FREQ,f.freq)}</div><div class="field"><label for="f-start">Periode tagihan pertama</label><input class="sel" type="month" id="f-start" value="${f.startMonth}"></div><p class="hint">Mulai ${mLabel(f.startMonth)}. Tetap periode ini meski tanggal jatuh temponya sudah lewat; tidak digeser otomatis.</p>`}
+ ${original?'<p class="hint">Nominal rutin baru berlaku mulai periode berikutnya. Ubah total periode ini melalui Bayar tagihan. Total periode dengan pembayaran tetap tersimpan.</p>':''}
+ <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${original?'Simpan perubahan':'Tambah tagihan'}</button>${original?'<button class="del" id="f-actions">Hentikan / batalkan tagihan</button>':''}`,root=>{
+ const keep=()=>{f.name=root.querySelector('#f-name').value;f.dueDay=Number(root.querySelector('#f-due').value);f.category=root.querySelector('#f-category').value;const start=root.querySelector('#f-start');if(start)f.startMonth=start.value;};
+ bindMoney(root.querySelector('#f-amt'),v=>{f.amount=v;});bindChips(root,'freq',v=>{keep();f.freq=Number(v);draw();});root.querySelector('#f-var').onclick=()=>{keep();f.variable=!f.variable;draw();};
+ root.querySelector('#f-save').onclick=()=>{keep();formCommit(root,data=>{
+  expectUnchanged(data,'bills',original);if(!f.name.trim())throw new Error('Isi nama tagihan.');if(!ArtoModel.validMonth(f.startMonth))throw new Error('Pilih periode pertama.');
+  if(!f.variable&&f.amount<=0)throw new Error('Isi jumlah tagihan.');if(!Number.isSafeInteger(f.amount)||f.amount<0)throw new Error('Jumlah tidak valid.');
+  const doc=Object.assign({},original||{},{id:original?original.id:uid('b'),name:f.name.trim(),amount:f.amount,category:f.category,variable:f.variable,dueDay:f.dueDay,freq:Number(f.freq),startMonth:f.startMonth,createdMonth:original?original.createdMonth||f.startMonth:f.startMonth,active:original?original.active!==false:true,updatedAt:new Date().toISOString()});
+  if(original&&(original.amount!==doc.amount||original.variable!==doc.variable)){
+   const frozen=Object.assign({},original.frozenPeriods||{});let month=original.startMonth||cm;
+   while(month<=cm){if(ArtoModel.billDue(original,month)&&!frozen[month]&&!(original.periodTotals||{})[month])frozen[month]={amount:Number(original.amount)||0,variable:!!original.variable};month=shiftM(month,Math.max(1,Number(original.freq)||1));}
+   doc.frozenPeriods=frozen;
+  }
+  return [{col:'bills',id:doc.id,doc}];
+ },undo=>{finish();toast('Jadwal tagihan tersimpan',undo);});};
+ if(original)root.querySelector('#f-actions').onclick=()=>openBillActions(original.id,()=>openBillForm(original.id,back));
+ },back);
+ draw();
+}
+function openBillActions(id,back){
+ const original=clone(S.bills.find(b=>b.id===id));if(!original)return;
+ const obligations=ArtoModel.openBills(S,todayISO()).filter(o=>o.b.id===id),cm=curMonth();
+ openSheet('Kelola kewajiban',`<div class="sum-box"><small>${esc(original.name)}</small><b>${rp(sum(obligations,o=>o.remaining))}</b><small>Sisa yang diketahui, ${obligations.length} periode belum selesai</small></div>
+ <div class="field"><label for="stop-month">Periode terakhir yang tetap ditagih</label><input type="month" class="sel" id="stop-month" value="${original.endMonth||cm}" min="${original.startMonth||cm}"></div><p class="hint">Hentikan pengulangan setelah periode ini. Tagihan yang sudah muncul, pembayaran, dan tunggakan tetap tersimpan.</p>
+ <button class="save" id="stop-bill">Hentikan pengulangan</button>
+ ${obligations.length?`<div class="set-label">Batalkan satu kewajiban</div><div class="field"><label for="cancel-period">Periode yang dibatalkan</label><select class="sel" id="cancel-period" data-artoselect>${obligations.map(o=>`<option value="${o.m}">${mLabel(o.m)} - ${o.status.unknown?'jumlah belum diisi':rp(o.remaining)}</option>`).join('')}</select></div><div class="field"><label for="cancel-reason">Alasan pembatalan</label><input class="text" id="cancel-reason" placeholder="Contoh: tagihan dibatalkan penyedia"></div><label class="confirm-line"><input type="checkbox" id="cancel-confirm"><span>Saya memahami sisa periode ini dibatalkan, bukan dibayar. Pembayaran lama tidak dihapus.</span></label><button class="del" id="cancel-bill">Batalkan sisa periode ini</button>`:''}<p class="err" id="f-err" hidden></p>`,root=>{
+ root.querySelector('#stop-bill').onclick=()=>formCommit(root,data=>{expectUnchanged(data,'bills',original);const end=root.querySelector('#stop-month').value;if(!ArtoModel.validMonth(end)||end<(original.startMonth||cm))throw new Error('Pilih periode terakhir yang valid.');if(end<cm)throw new Error('Untuk menjaga kewajiban lama, penghentian paling awal berlaku setelah bulan ini. Batalkan periode tertentu secara terpisah.');return [{col:'bills',id,doc:Object.assign({},original,{endMonth:end,stoppedAt:new Date().toISOString()})}];},undo=>{render();back?back():closeSheet();toast('Pengulangan dihentikan. Kewajiban lama tetap ada.',undo);},'stop-bill');
+ const cancel=root.querySelector('#cancel-bill');if(cancel)cancel.onclick=()=>formCommit(root,data=>{expectUnchanged(data,'bills',original);const m=root.querySelector('#cancel-period').value,reason=root.querySelector('#cancel-reason').value.trim();if(!reason||!root.querySelector('#cancel-confirm').checked)throw new Error('Isi alasan dan konfirmasi dampak pembatalan.');const state=ArtoModel.billStatus(data,original,m,todayISO());if(state.settled)throw new Error('Periode sudah selesai. Buka ulang daftar.');return [{col:'bills',id,doc:Object.assign({},original,{periodCancellations:Object.assign({},original.periodCancellations||{},{[m]:{date:todayISO(),reason,remaining:state.remaining,createdAt:new Date().toISOString()}})})}];},undo=>{render();back?back():closeSheet();toast('Sisa periode dibatalkan. Riwayat tetap ada.',undo);},'cancel-bill');
+ },back);
 }
 
 // ---- Tujuan tabungan ----
-function openGoalForm(id) {
-  const g = id ? S.goals.find(x => x.id === id) : null, f = { name: g ? g.name : '', target: g ? g.target || 0 : 0, initial: g ? g.initial || 0 : 0 };
-  const used = g && S.tx.some(x => x.goal === g.id);
-  openSheet(g ? 'Ubah tujuan' : 'Tambah tujuan', `<div class="field"><label for="f-name">Nama tujuan</label><input id="f-name" class="text" value="${esc(f.name)}" placeholder="Contoh: Dana darurat" autocomplete="off"></div>
-    ${moneyField('f-target', 'Target (boleh kosong)', f.target)}${moneyField('f-init', 'Sudah terkumpul sebelumnya', f.initial)}
-    <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${g ? 'Simpan perubahan' : 'Tambah tujuan'}</button>${g ? `<button class="del" id="f-del">${used ? 'Sudah ada catatan, tidak bisa dihapus' : 'Hapus tujuan'}</button>` : ''}`, root => {
-    bindMoney(root.querySelector('#f-target'), v => { f.target = v; });
-    bindMoney(root.querySelector('#f-init'), v => { f.initial = v; });
-    root.querySelector('#f-save').onclick = () => {
-      const n = root.querySelector('#f-name').value.trim();
-      if (!n) { const e = root.querySelector('#f-err'); e.textContent = 'Beri nama tujuannya.'; e.hidden = false; return; }
-      put('goals', Object.assign({},g || {},{ id: g ? g.id : uid('g'), name: n, target: f.target, initial: f.initial, order: g ? g.order : S.goals.length }));
-      closeSheet(); render(); toast(g ? 'Tujuan diperbarui' : 'Tujuan ' + n + ' ditambahkan');
-    };
-    if (g) { const d = root.querySelector('#f-del'); if (used) d.disabled = true; else d.onclick = () => { const s = Object.assign({}, g); del('goals', g.id); closeSheet(); render(); toast('Tujuan dihapus', () => put('goals', s)); }; }
-  });
+function openGoalForm(id){
+ const g=id?clone(S.goals.find(v=>v.id===id)):null,f={name:g?g.name:'',target:g?g.target||0:0,initial:0,initialDate:todayISO()};
+ const used=g&&S.tx.some(x=>x.goal===id);
+ openSheet(g?'Ubah tujuan':'Tambah tujuan',`<div class="field"><label for="f-name">Nama tujuan</label><input class="text" id="f-name" value="${esc(f.name)}" placeholder="Contoh: Dana darurat"></div>${moneyField('f-target','Target (boleh kosong)',f.target)}
+ ${g?`<div class="sum-box" style="margin-top:14px"><small>Saldo sekarang</small><b class="num">${rp(goalSaved(g))}</b><small>${g.initialDate?'Saldo awal berlaku '+dShort(g.initialDate)+' '+g.initialDate.slice(0,4):'Saldo awal lama tanpa tanggal; riwayat dipertahankan.'}</small></div><button class="bar-btn" id="goal-adjust">${svg('scale')}Sesuaikan saldo</button>`:`${moneyField('f-init','Sudah terkumpul sebelumnya',0)}<div class="field"><label for="f-initial-date">Tanggal saldo awal berlaku</label><input type="date" class="sel" id="f-initial-date" value="${f.initialDate}" max="${todayISO()}"></div><p class="hint">Laporan sebelum tanggal ini tidak memasukkan saldo awal tersebut. Jangan masukkan dana yang juga masih dihitung di dompet; gunakan Tabung untuk memindahkannya.</p>`}
+ <p class="err" id="f-err" hidden></p><button class="save" id="f-save">${g?'Simpan perubahan':'Tambah tujuan'}</button>${g?`<button class="del" id="f-del" ${used||goalSaved(g)!==0?'disabled':''}>${used||goalSaved(g)!==0?'Saldo / riwayat masih tersimpan':'Hapus tujuan kosong'}</button>`:''}`,root=>{
+ bindMoney(root.querySelector('#f-target'),v=>{f.target=v;});if(!g)bindMoney(root.querySelector('#f-init'),v=>{f.initial=v;});
+ root.querySelector('#f-save').onclick=()=>formCommit(root,data=>{
+ expectUnchanged(data,'goals',g);const name=root.querySelector('#f-name').value.trim();if(!name)throw new Error('Isi nama tujuan.');
+ const doc=Object.assign({},g||{},{id:g?g.id:uid('g'),name,target:f.target,order:g?g.order:data.goals.length});
+ if(!g){const date=root.querySelector('#f-initial-date').value;if(!ArtoModel.validDate(date)||date>todayISO())throw new Error('Pilih tanggal saldo awal yang valid.');Object.assign(doc,{initial:f.initial,initialDate:date,createdAt:new Date().toISOString()});}
+ return [{col:'goals',id:doc.id,doc}];
+ },undo=>{closeSheet();render();toast('Tujuan tersimpan',undo);});
+ if(g){root.querySelector('#goal-adjust').onclick=()=>openGoalAdjust(g.id,null,()=>openGoalForm(g.id));root.querySelector('#f-del').onclick=()=>formCommit(root,data=>{expectUnchanged(data,'goals',g);if(data.tx.some(x=>x.goal===g.id)||ArtoModel.goalAt(data,g,todayISO())!==0)throw new Error('Tujuan masih memiliki saldo atau riwayat.');return [{col:'goals',id:g.id,doc:null}];},undo=>{closeSheet();render();toast('Tujuan kosong dihapus',undo);},'f-del');}
+ });
+}
+function openGoalAdjust(goalId,edit,back){
+ const g=clone(S.goals.find(g=>g.id===goalId));if(!g){toast('Tujuan tidak ditemukan',null,true);return;}
+ const original=clone(edit),f={date:edit?edit.date:todayISO(),real:ArtoModel.goalAt(S,g,edit?edit.date:todayISO()),reason:edit?edit.name:''};
+ openSheet('Sesuaikan tabungan',`<p class="hint">${esc(g.name)}. Koreksi saldo, bukan pemasukan atau perpindahan dari dompet.</p>${dateField(f)}${moneyField('f-real','Saldo sebenarnya pada tanggal ini',f.real)}<div class="field"><label for="f-reason">Alasan koreksi</label><input class="text" id="f-reason" value="${esc(f.reason)}" placeholder="Contoh: koreksi pencatatan saldo"></div><p class="err" id="f-err" hidden></p><button class="save" id="f-save">Simpan penyesuaian</button>${edit?'<button class="del" id="f-del">Hapus penyesuaian</button>':''}`,root=>{
+ bindMoney(root.querySelector('#f-real'),v=>{f.real=v;});bindDate(root,f);
+ root.querySelector('#f-save').onclick=()=>formCommit(root,data=>{expectUnchanged(data,'tx',original);const reason=root.querySelector('#f-reason').value.trim();if(!reason)throw new Error('Isi alasan koreksi.');if(!ArtoModel.validDate(f.date)||f.date>todayISO())throw new Error('Pilih tanggal yang valid.');if(!Number.isSafeInteger(f.real)||f.real<0)throw new Error('Saldo tidak valid.');
+ const copy=clone(data);if(edit)copy.tx=copy.tx.filter(t=>t.id!==edit.id);const goal=data.goals.find(v=>v.id===goalId);if(!goal)throw new Error('Tujuan tidak tersedia.');const delta=f.real-ArtoModel.goalAt(copy,goal,f.date);
+ const x=Object.assign({},original||{},{id:edit?edit.id:uid('t'),type:'goal_adjust',goal:goalId,amount:delta,name:reason,date:f.date,month:monthOf(f.date),time:edit?edit.time:nowTime(),updatedAt:new Date().toISOString()});return [{col:'tx',id:x.id,doc:x}];
+ },undo=>{closeSheet();render();if(back)back();toast('Penyesuaian tabungan tersimpan',undo);});
+ if(edit)root.querySelector('#f-del').onclick=()=>formCommit(root,data=>deletionChanges(data,original),undo=>{closeSheet();render();toast('Penyesuaian dihapus',undo);},'f-del');
+ },back);
 }
 
 // ---- Kategori Harian ----
@@ -1628,15 +1752,17 @@ function openIncomeForm(id, back) {
     if (t) root.querySelector('#f-del').onclick = () => { const s = Object.assign({}, t); del('incomes', t.id); render(); toast('Gaji rutin dihapus', () => put('incomes', s)); back ? back() : closeSheet(); };
   }, back);
 }
-function confirmIncome(id,amount,wallet) {
-  const t=S.incomes.find(x=>x.id===id);if(!t)return;
-  const wid=wallet||t.wallet;
-  if(!activeWallet(wid))return openIncomeConfirm(id);
-  const d=todayISO();
-  if(S.tx.some(x=>x.type==='in'&&x.tpl===id&&x.month===monthOf(d))){toast('Pemasukan bulan ini sudah dikonfirmasi');return;}
-  const x={id:uid('t'),type:'in',tpl:t.id,name:t.name,amount:amount||t.amount,wallet:wid,date:d,month:monthOf(d),time:nowTime()};
-  put('tx',x);render();toast(t.name+' '+rp(x.amount)+' masuk',()=>del('tx',x.id));
+async function confirmIncome(id,amount,wallet){
+ const template=S.incomes.find(t=>t.id===id);if(!template)return;const selected=wallet||template.wallet;
+ if(!activeWallet(selected)){openIncomeConfirm(id);return;}
+ try{const undo=await commitFinancial(data=>{
+  const t=data.incomes.find(t=>t.id===id);if(!t)throw new Error('Pemasukan rutin tidak ditemukan.');
+  if(data.tx.some(x=>x.type==='in'&&x.tpl===id&&x.month===curMonth()))throw new Error('Pemasukan bulan ini sudah dikonfirmasi.');
+  requireWallet(data,selected);const value=Number(amount||t.amount);if(!Number.isSafeInteger(value)||value<=0)throw new Error('Isi jumlah yang valid.');
+  const d=todayISO(),x={id:uid('t'),type:'in',tpl:id,name:t.name,amount:value,wallet:selected,date:d,month:monthOf(d),time:nowTime()};return [{col:'tx',id:x.id,doc:x}];
+ });render();toast('Pemasukan dikonfirmasi',undo);}catch(e){toast(e.message,null,true);}
 }
+
 function openIncomeConfirm(id) {
   if(needWallet())return;
   const t=S.incomes.find(x=>x.id===id);if(!t)return;
@@ -1672,17 +1798,19 @@ function openSettings() {
       <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Diminta setiap Arto dibuka' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       ${pinOn ? '<button class="set-row" id="s-pinoff"><span class="grow t1">Matikan PIN</span></button><button class="set-row" id="s-locknow"><span class="grow t1">Kunci sekarang</span></button>' : ''}</div>
     <div class="set-label">Akun</div><div class="set-group">
-      <div class="set-row"><span class="ico g" style="width:36px;height:36px">${svg('user')}</span><span class="grow"><span class="t1">${cloud.user ? esc(cloud.user.email) : 'Mode coba'}</span><span class="t2">${cloud.user ? 'Tersimpan dan tersinkron' : 'Data hanya di perangkat ini'}</span></span></div>
+      <div class="set-row"><span class="ico g" style="width:36px;height:36px">${svg('user')}</span><span class="grow"><span class="t1">${cloud.user ? esc(cloud.user.email) : 'Mode coba'}</span><span class="t2">${cloud.user ? (lastWriteError?'Periksa penyimpanan':pendingWrites||financeBusy||cloud.pending?'Menunggu sinkronisasi':navigator.onLine===false?'Offline - data tersimpan sebelumnya':'Tersinkron') : 'Data hanya di perangkat ini'}</span></span></div>
       ${cloud.user ? '<button class="set-row" id="s-out"><span class="grow t1" style="color:var(--red-ink)">Keluar</span></button>' : '<button class="set-row" id="s-in"><span class="grow t1" style="color:var(--blue)">Masuk ke akun</span></button>'}</div>
     <div class="set-label">Email</div><div class="set-group"><div class="set-row"><span class="grow"><span class="t1">Laporan & pengingat</span><span class="t2">${MAIL_URL ? 'Laporan tiap tanggal 1 dan pengingat tagihan 2 hari sebelum jatuh tempo, ke ' + OWNER : 'Belum disambungkan'}</span></span></div></div>
+    <button class="bar-btn" id="s-backup">Unduh cadangan data (JSON)</button><p class="hint">Simpan cadangan secara pribadi. Jangan unggah ke repositori publik.</p>
     <p class="hint" style="text-align:center;margin-top:16px">Arto versi ${APP_VERSION}</p>`, root => {
     const back = () => openSettings();
+    root.querySelector('#s-backup').onclick=downloadBackup;
     root.querySelectorAll('[data-w]').forEach(r => r.onclick = () => openWalletForm(r.dataset.w, back));
     root.querySelector('#s-wadd').onclick = () => openWalletForm(null, back);
     root.querySelectorAll('[data-i]').forEach(r => r.onclick = () => openIncomeForm(r.dataset.i, back));
     root.querySelector('#s-iadd').onclick = () => { if (needWallet()) return; openIncomeForm(null, back); };
     root.querySelector('#s-categories').onclick = () => openCategoryManager(back);
-    root.querySelector('#s-limit').onclick = () => openNumberSetting('limit', 'Batas Harian', 'Batas jajan dan pengeluaran harian dalam sebulan, termasuk bensin dan belanja dapur.', back);
+    root.querySelector('#s-limit').onclick = () => openNumberSetting('limit', 'Batas Harian', 'Anggaran untuk kategori Harian saja. Kategori lain tidak mengurangi anggaran ini.', back);
     root.querySelector('#s-plan').onclick = () => openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".', back);
     root.querySelector('#s-pin').onclick = () => { closeSheet(); startPin(pinOn ? 'change' : 'new'); };
     if (pinOn) { root.querySelector('#s-pinoff').onclick = () => { closeSheet(); startPin('off'); }; root.querySelector('#s-locknow').onclick = () => { closeSheet(); showLock(); }; }
@@ -1800,15 +1928,8 @@ function showLogin() {
   goBtn.onclick = doLogin; $('lg-pass').addEventListener('keyup', e => { if (e.key === 'Enter') doLogin(); });
   const loc = $('lg-local'); if (loc) loc.onclick = () => { setMode('local'); L.hidden = true; render(); };
 }
-const FIX1_KEY = 'arto_fix_first_month_v1';
-function fixFirstMonthBills() {
-  try { if (localStorage.getItem(FIX1_KEY) === '1') return; } catch (e) {}
-  const cm = curMonth(), today = dayOf(todayISO());
-  const list = S.bills.filter(b => Number(b.freq) === 1 && (b.createdMonth || cm) === cm && (b.startMonth || cm) === cm && dueDayIn(b, cm) < today && !ArtoModel.billPayments(S,b,cm).length);
-  list.forEach(b => put('bills', Object.assign({}, b, { startMonth: shiftM(cm, 1) })));
-  try { localStorage.setItem(FIX1_KEY, '1'); } catch (e) {}
-  if (list.length) { render(); toast(list.length + ' tagihan yang jatuh temponya sudah lewat dimulai bulan depan'); }
-}
+function fixFirstMonthBills() { /* No automatic date migration in 1.15. */ }
+
 function stopSync() { unsubs.forEach(u => { try { u(); } catch (e) {} }); unsubs = []; }
 function startSync() {
   stopSync(); cloud.ready = false;
@@ -1850,7 +1971,7 @@ document.addEventListener('click', e => {
   else if (d.areturn) go(activityFrom);
   else if (d.go) go(d.go);
   else if (d.pay) openPay(d.pay, d.m);
-  else if (d.edit) openTx({ id: d.edit });
+  else if (d.edit) {const y=window.scrollY;openTx({id:d.edit,back:()=>{render();window.scrollTo(0,y);}});}
   else if (d.quick) openTx({kind:'out',category:'harian',name:d.quick});
   else if (d.savegoal) openTx({ kind: 'save', dir: 'save', goal: d.savegoal });
   else if (d.withdraw) openTx({ kind: 'save', dir: 'withdraw', goal: d.withdraw });
@@ -1859,7 +1980,7 @@ document.addEventListener('click', e => {
   else if (d.incok) confirmIncome(d.incok);
   else if (d.incedit) openIncomeConfirm(d.incedit);
   else if (d.f) { filter = d.f; renderRiwayat(); }
-  else if (d.rm) { rMonth = d.rm === 'now' ? curMonth() : shiftM(rMonth, Number(d.rm)); renderRiwayat(); }
+  else if (d.rm) { if(reportMode==='year'){rYear=d.rm==='now'?todayISO().slice(0,4):String(Number(rYear)+Number(d.rm));}else{rMonth=d.rm==='now'?curMonth():shiftM(rMonth,Number(d.rm));} renderRiwayat(); }
   else if (d.act === 'wallet-new') openWalletForm(null);
   else if (d.act === 'wallets') openWalletList();
   else if (d.act === 'transfer') { if (activeWallets().length < 2) { toast('Butuh minimal dua dompet untuk pindah uang'); return; } openTx({ kind: 'transfer' }); }
@@ -1867,37 +1988,25 @@ document.addEventListener('click', e => {
   else if (d.act === 'goal-new') openGoalForm(null);
   else if (d.act === 'cat-new') openCatForm(null);
   else if (d.act === 'categories') openCategoryManager();
-  else if (d.act === 'limit') openNumberSetting('limit', 'Batas Harian', 'Batas jajan dan pengeluaran harian dalam sebulan, termasuk bensin dan belanja dapur.');
+  else if (d.act === 'limit') openNumberSetting('limit', 'Batas Harian', 'Anggaran untuk kategori Harian saja. Kategori lain tidak mengurangi anggaran ini.');
   else if (d.act === 'plan') openNumberSetting('planSave', 'Rencana tabungan', 'Sisa rencana yang belum ditabung bulan ini disisihkan dari "Bisa dipakai".');
   else if (d.act === 'share') shareReport();
   else if (d.act === 'mail') mailReport(t);
 });
-async function mailReport(btn) {
-  if (!MAIL_URL || !auth || !auth.currentUser) { toast('Masuk ke akun untuk mengirim laporan.',null,true); return; }
-  if (navigator.onLine === false) { toast('Hubungkan internet dan tunggu sinkronisasi sebelum mengirim laporan.',null,true); return; }
-  const m = rMonth || curMonth(), old = btn.innerHTML;
-  btn.disabled = true; btn.textContent = 'Mengirim...';
-  let waitTimer;
-  try {
-    if (db && db.waitForPendingWrites) await Promise.race([
-      db.waitForPendingWrites(),
-      new Promise((_,reject)=>{ waitTimer=setTimeout(()=>reject(new Error('sync-pending')),12000); })
-    ]);
-    clearTimeout(waitTimer);
-    const idToken = await auth.currentUser.getIdToken();
-    const r = await fetch(MAIL_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({idToken,month:m})});
-    const out = await r.json();
-    if (!r.ok || !out || !out.ok) throw new Error((out && out.error)||'send-failed');
-    toast('Laporan '+mLabel(m)+' terkirim ke email');
-  } catch(e) {
-    console.error(e);
-    toast(e.message==='sync-pending' ? 'Data belum selesai tersinkron. Coba lagi setelah koneksi stabil.' : 'Email gagal terkirim. Periksa koneksi dan deployment email.',null,true);
-  } finally { clearTimeout(waitTimer); btn.disabled=false; btn.innerHTML=old; }
+async function mailReport(btn){
+ if(!MAIL_URL||!auth||!auth.currentUser){toast('Masuk ke akun untuk mengirim laporan.',null,true);return;}
+ if(navigator.onLine===false||pendingWrites||financeBusy){toast('Tunggu koneksi dan penyimpanan selesai.',null,true);return;}
+ const key=selectedReport(),mode=reportMode,old=btn.innerHTML;btn.disabled=true;btn.textContent='Mengirim...';let timer;
+ try{
+  if(db&&db.waitForPendingWrites)await Promise.race([db.waitForPendingWrites(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Data belum selesai tersinkron. Coba lagi.')),12000);})]);clearTimeout(timer);
+  const idToken=await auth.currentUser.getIdToken(),body=mode==='year'?{idToken,mode:'year',year:key}:{idToken,mode:'month',month:key};
+  const r=await fetch(MAIL_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}),out=await r.json();
+  if(!r.ok||!out||!out.ok)throw new Error('Email gagal. Periksa deployment script dan izin akun.');toast('Laporan '+periodName(key)+' terkirim ke email');
+ }catch(e){toast(e.message||'Email gagal terkirim.',null,true);}finally{clearTimeout(timer);btn.disabled=false;btn.innerHTML=old;}
 }
-async function shareReport() {
-  const text = reportText(rMonth || curMonth());
-  if (navigator.share) { try { await navigator.share({ title: 'Laporan Arto', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
-  try { await navigator.clipboard.writeText(text); toast('Laporan disalin'); } catch (e) { toast('Tidak bisa membagikan di perangkat ini', null, true); }
+async function shareReport(){
+ const text=reportText(selectedReport());if(navigator.share){try{await navigator.share({title:'Laporan Arto '+periodName(selectedReport()),text});return;}catch(e){if(e&&e.name==='AbortError')return;}}
+ try{await navigator.clipboard.writeText(text);toast('Laporan disalin');}catch(e){openSheet('Laporan '+periodName(selectedReport()),`<textarea class="text" style="height:50vh;padding:14px" readonly aria-label="Teks laporan">${esc(text)}</textarea>`);}
 }
 
 // ================= Aktivitas dan ringkasan laporan =================
@@ -1913,7 +2022,7 @@ function categoryOf(x){ return ArtoModel.categoryOf(S,x,allCats()); }
 function matchesFilter(x,f){
   if(f==='in')return x.type==='in';
   if(f==='out')return isExpense(x);
-  if(f==='save')return ['save','withdraw'].includes(x.type);
+  if(f==='save')return ['save','withdraw','goal_adjust'].includes(x.type);
   return true;
 }
 function recentActivity(kind,days){
@@ -1934,18 +2043,21 @@ function openActivity(kind,scroll=0){
   $('sheet').scrollTop=scroll;
 }
 function showActivityPage(kind='all',from='home'){
-  activityFilter=kind;activityRange='30';activityQuery='';activityFrom=from==='riwayat'?'riwayat':'home';closeSheet();renderActivityPage();go('aktivitas');
+  activityFilter=kind;activityRange='30';activityQuery='';activityPeriod=null;activityCategory='all';activityFrom=from==='riwayat'?'riwayat':'home';closeSheet();renderActivityPage(true);go('aktivitas');
 }
+
 function activityData(){
-  const end=todayISO(),start=activityRange==='all'?'0000-01-01':isoAdd(end,-(Number(activityRange)-1));
-  const all=S.tx.filter(x=>x.date>=start&&x.date<=end);
-  const q=activityQuery.trim().toLowerCase();
-  const shown=all.filter(x=>matchesFilter(x,activityFilter)&&(!q||[x.name,categoryOf(x).name,walletName(x.wallet)].some(v=>v.toLowerCase().includes(q))));
-  return {all,shown,start,end};
+ const p=activityRange==='report'&&activityPeriod?ArtoModel.reportPeriod(activityPeriod,todayISO()):null;
+ const end=p?p.end:todayISO(),start=p?p.start:activityRange==='all'?'0000-01-01':isoAdd(end,-(Number(activityRange)-1));
+ const all=S.tx.filter(x=>x.date>=start&&x.date<=end),q=activityQuery.trim().toLowerCase();
+ const shown=all.filter(x=>matchesFilter(x,activityFilter)&&(activityCategory==='all'||isExpense(x)&&categoryOf(x).id===activityCategory)&&(!q||[x.name||'',categoryOf(x).name,walletName(x.wallet)].some(v=>v.toLowerCase().includes(q))));
+ return {all,shown,start,end};
 }
-function renderActivityPage(){
+
+function renderActivityPage(force=false){
   const el=$('aktivitas');if(!el)return;
-  el.innerHTML=`<button class="inline-back" data-areturn="true">${svg('left')}Kembali ke ${activityFrom==='home'?'Beranda':'Riwayat'}</button><div class="activity-heading"><h1 class="title">Aktivitas</h1><select id="activity-range" class="range-select" aria-label="Periode aktivitas">${[['10','10 hari terakhir'],['30','30 hari terakhir'],['90','90 hari terakhir'],['all','Semua tanggal']].map(([v,l])=>`<option value="${v}" ${activityRange===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="seg activity-filters" role="group" aria-label="Jenis aktivitas">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['save','Tabungan']].map(([v,l])=>`<button data-afilter="${v}" aria-pressed="${activityFilter===v}">${l}</button>`).join('')}</div><input type="search" id="activity-search" class="text search-field" placeholder="Cari keterangan, kategori, dompet..." value="${esc(activityQuery)}" aria-label="Cari transaksi"><div id="activity-results"></div>`;
+  if(!force&&el.classList.contains('on')&&$('activity-search')){document.querySelectorAll('[data-afilter]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.afilter===activityFilter));renderActivityResults();return;}
+  el.innerHTML=`<button class="inline-back" data-areturn="true">${svg('left')}Kembali ke ${activityFrom==='home'?'Beranda':activityFrom==='harian'?'Pengeluaran':'Riwayat'}</button><div class="activity-heading"><h1 class="title">Aktivitas</h1><select id="activity-range" class="range-select" aria-label="Periode aktivitas">${(activityPeriod?[['report',periodName(activityPeriod)]]:[]).concat([['10','10 hari terakhir'],['30','30 hari terakhir'],['90','90 hari terakhir'],['all','Semua tanggal']]).map(([v,l])=>`<option value="${v}" ${activityRange===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="seg activity-filters" role="group" aria-label="Jenis aktivitas">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['save','Tabungan']].map(([v,l])=>`<button data-afilter="${v}" aria-pressed="${activityFilter===v}">${l}</button>`).join('')}</div><input type="search" id="activity-search" class="text search-field" placeholder="Cari keterangan, kategori, dompet..." value="${esc(activityQuery)}" aria-label="Cari transaksi"><div id="activity-results"></div>`;
   $('activity-range').onchange=e=>{activityRange=e.target.value;renderActivityResults();};
   $('activity-search').oninput=e=>{activityQuery=e.target.value;renderActivityResults();};
   renderActivityResults();
@@ -1964,12 +2076,42 @@ function openCategoryManager(back){
     const again=()=>openCategoryManager(back);root.querySelector('#category-add').onclick=()=>openCatForm(null,again);root.querySelectorAll('[data-custom-category]').forEach(b=>b.onclick=()=>openCatForm(b.dataset.customCategory,again));
   },back);
 }
+// Additional controls reuse existing route IDs, avoiding broken stored tabs.
+function openPeriodActivity(period,kind='all',category='all',from='riwayat'){
+ activityPeriod=period;activityRange='report';activityFilter=kind;activityCategory=category;activityQuery='';activityFrom=from;closeSheet();renderActivityPage(true);go('aktivitas');
+}
+let activityPeriod=null,activityCategory='all';
+document.addEventListener('click',e=>{
+ if(e.target.closest('#scrim')||e.target.closest('#toast')||e.target.closest('.screen'))return;
+ const b=e.target.closest('[data-reportmode],[data-reportmonth],[data-backyear],[data-pickreport],[data-reportactivity],[data-billmonth],[data-expensemonth],[data-expenseactivity],[data-newexpense],[data-newbill]');if(!b)return;
+ const d=b.dataset;
+ if(d.reportmode){reportMode=d.reportmode;reportFromYear=false;renderRiwayat();$('report-tab-'+reportMode).focus({preventScroll:true});}
+ else if(d.reportmonth){rMonth=d.reportmonth;reportMode='month';reportFromYear=true;renderRiwayat();window.scrollTo(0,0);}
+ else if(d.backyear){reportMode='year';reportFromYear=false;renderRiwayat();window.scrollTo(0,0);}
+ else if(d.pickreport){const year=reportMode==='year';openSheet('Pilih '+(year?'tahun':'bulan'),`<div class="field"><label for="report-period">Periode</label>${year?`<select class="sel" id="report-period" data-artoselect>${Array.from({length:Math.max(1,Number(todayISO().slice(0,4))-Number(firstMonth().slice(0,4))+1)},(_,i)=>String(Number(todayISO().slice(0,4))-i)).map(y=>`<option ${y===rYear?'selected':''}>${y}</option>`).join('')}</select>`:`<input class="sel" type="month" id="report-period" value="${rMonth}" max="${curMonth()}">`}</div><p class="err" id="f-err" hidden></p><button class="save" id="choose-period">Tampilkan laporan</button>`,root=>{root.querySelector('#choose-period').onclick=()=>{const v=root.querySelector('#report-period').value;try{ArtoModel.reportPeriod(v,todayISO());if(year)rYear=v;else rMonth=v;closeSheet();renderRiwayat();}catch(err){root.querySelector('#f-err').textContent=err.message;root.querySelector('#f-err').hidden=false;}};});}
+ else if(d.reportactivity)openPeriodActivity(selectedReport(),filter);
+ else if(d.billmonth){billMonthView=shiftM(billMonthView||curMonth(),Number(d.billmonth));renderPokok();}
+ else if(d.expensemonth){expenseMonth=shiftM(expenseMonth||curMonth(),Number(d.expensemonth));renderHarian();}
+ else if(d.expenseactivity)openPeriodActivity(expenseMonth||curMonth(),'out',expenseCategory,'harian');
+ else if(d.newexpense)openTx({kind:'out',category:d.newexpense,name:d.description||'',date:(expenseMonth||curMonth())===curMonth()?todayISO():ArtoModel.endOfMonth(expenseMonth)});
+ else if(d.newbill)openBillForm(null);
+});
+document.addEventListener('keydown',e=>{
+ const b=e.target.closest('[data-reportmode]');if(!b||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+ e.preventDefault();reportMode=e.key==='Home'?'month':e.key==='End'?'year':reportMode==='year'?'month':'year';renderRiwayat();$('report-tab-'+reportMode).focus({preventScroll:true});
+});
+// Optional private backup, generated only on an explicit click. Contains sensitive
+// personal ledger data; never upload it into the public GitHub repository.
+function downloadBackup(){
+ const blob=new Blob([JSON.stringify({app:'Arto',version:APP_VERSION,exportedAt:new Date().toISOString(),data:S},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='arto-backup-'+todayISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 // ================= Mulai =================
 $('btn-settings').innerHTML = svg('gear');
 $('btn-settings').onclick = openSettings;
 $('plus').innerHTML = svg('plus', 2.6);
 $('plus').onclick = () => openTx({});
-const NAV = { home: ['home', 'Beranda'], pokok: ['check', 'Pokok'], harian: ['bag', 'Harian'], riwayat: ['clock', 'Riwayat'] };
+const NAV = { home: ['home', 'Beranda'], pokok: ['check', 'Tagihan'], harian: ['bag', 'Pengeluaran'], riwayat: ['clock', 'Riwayat'] };
 document.querySelectorAll('.nav .tab').forEach(b => { const [ic, n] = NAV[b.dataset.go]; b.innerHTML = svg(ic) + n; });
 render();
 try { const t = localStorage.getItem(TAB_KEY); if (t && $(t)) go(t); } catch (e) {}
@@ -1994,7 +2136,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.(ai|site)|claudeusercontent/.test(location.hostname)) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
 }
-window.__arto = { S: () => S, render, go, totalBal, goalSaved, savingsUpTo, snapshot, categoryOf, recentActivity, periodStats, openTx, openActivity, showActivityPage, reportText, todayISO, isoAdd, model: ArtoModel, billState, openBills, overview, openPay, openWalletList, openWalletForm, openWalletDelete, activeWallets, writeChanges };
+window.__arto = { selectedReport, renderRiwayat, commitFinancial, openGoalForm, openBillForm, openBillManager, openBillActions, openGoalAdjust, S: () => S, render, go, totalBal, goalSaved, savingsUpTo, snapshot, categoryOf, recentActivity, periodStats, openTx, openActivity, showActivityPage, reportText, todayISO, isoAdd, model: ArtoModel, billState, openBills, overview, openPay, openWalletList, openWalletForm, openWalletDelete, activeWallets, writeChanges };
 })();
 </script>
 </body>
