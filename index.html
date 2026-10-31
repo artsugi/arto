@@ -524,7 +524,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.21';
+const APP_VERSION = '1.22';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -923,6 +923,18 @@ function validateChanges(data,changes){
 // Re-read the server ledger under a config/main revision guard. All v1.15 writes
 // increment that guard. No startup migration, extra collection, or cached sum
 // is used to approve an online payment. Older clients must be updated too.
+let authKnown=false;const authWaiters=[];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitAuth=(ms=10000)=>authKnown?Promise.resolve():new Promise(r=>{authWaiters.push(r);setTimeout(r,ms);});
+async function waitCloudReady(ms=10000){const end=Date.now()+ms;while(!cloud.ready&&Date.now()<end)await sleep(200);}
+// Pesan yang jelas sesuai penyebabnya, supaya mudah dilacak
+function saveErrorMessage(e){
+  const code=e&&e.code||'', msg=e&&e.message||'';
+  if(code==='unavailable'||code==='deadline-exceeded'||/offline|network|Failed to get document/i.test(msg))return 'Tidak bisa terhubung ke server Arto. Periksa sinyal lalu coba lagi. Isian tetap tersedia.';
+  if(code==='permission-denied')return 'Server menolak penyimpanan. Keluar dari akun lalu masuk lagi di Pengaturan.';
+  if(code==='unauthenticated')return 'Sesi akun berakhir. Masuk lagi di Pengaturan.';
+  return msg||'Penyimpanan gagal.';
+}
 async function commitFinancial(builder,makeUndo=true){
   if(financeBusy)throw new Error('Tunggu penyimpanan sebelumnya selesai.');
   financeBusy=true;lastWriteError='';saveFeedback();let before=[],changes=[];
@@ -932,7 +944,10 @@ async function commitFinancial(builder,makeUndo=true){
       before=changes.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
       applyChanges(S,changes);categoryCache=null;cache();
     }else{
-      if(!cloud.user||!db||navigator.onLine===false)throw new Error('Hubungkan internet untuk memvalidasi dan menyimpan transaksi. Isian tetap tersedia.');
+      if(!db)throw new Error('Layanan sinkron Arto belum termuat. Tutup Arto lalu buka lagi. Kalau tetap, coba ganti jaringan (Wi-Fi atau data seluler).');
+      await waitAuth();
+      if(!cloud.user)throw new Error('Arto belum masuk ke akunmu di HP ini. Buka Pengaturan lalu masuk lagi.');
+      await waitCloudReady();
       if(pendingWrites||cloud.pending)throw new Error('Tunggu sinkronisasi selesai sebelum menyimpan transaksi ini.');
       let committed=false;
       for(let attempt=0;attempt<3&&!committed;attempt++){
@@ -959,7 +974,7 @@ async function commitFinancial(builder,makeUndo=true){
     return async()=>commitFinancial(data=>{
       changes.forEach(c=>{if(stable(data[c.col].find(x=>x.id===c.id)||null)!==stable(c.doc||null))throw new Error('Data sudah berubah. Buka riwayat untuk koreksi.');});return before;
     },false);
-  }catch(e){lastWriteError=e.message;throw new Error(e.message==='ARTO_RETRY_LEDGER'?'Data berubah. Buka ulang formulir setelah sinkronisasi.':e.message||'Penyimpanan gagal.');}
+  }catch(e){const m=e.message==='ARTO_RETRY_LEDGER'?'Data berubah. Buka ulang formulir setelah sinkronisasi.':saveErrorMessage(e);lastWriteError=m;console.error('Arto save error',e);throw new Error(m);}
   finally{financeBusy=false;saveFeedback();}
 }
 async function formCommit(root,builder,done,buttonId='f-save'){
@@ -2305,6 +2320,7 @@ checkBio().then(() => { if (getPin() && !$('lock').hidden) { pinScreen(); autoBi
 if (getPin() && !takeRefresh()) showLock();
 if (cloud.available) {
   auth.onAuthStateChanged(u => {
+    authKnown = true; authWaiters.splice(0).forEach(r => r());
     if (u && u.email && u.email.toLowerCase() === OWNER) { cloud.user = { email: u.email }; setMode('cloud'); $('login').hidden = true; startSync(); }
     else { if (u) auth.signOut(); cloud.user = null; stopSync(); if (cloud.mode !== 'local') showLogin(); }
   });
@@ -2321,6 +2337,7 @@ async function checkUpdate() {
 setTimeout(checkUpdate, 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); else if (!unloading) clearRefresh(); }); // saat refresh, browser juga mengirim 'hidden' setelah pagehide
 window.addEventListener('pagehide', markRefresh);
+window.addEventListener('online', () => { if (lastWriteError && !financeBusy) { lastWriteError = ''; saveFeedback(); } });
 window.addEventListener('beforeunload', () => { if (document.visibilityState === 'visible') markRefresh(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.(ai|site)|claudeusercontent/.test(location.hostname)) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
