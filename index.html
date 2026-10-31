@@ -524,7 +524,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.22';
+const APP_VERSION = '1.23';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -875,43 +875,70 @@ function remote(fn) {
 let pendingWrites=0, lastWriteError='', financeBusy=false;
 const clone=x=>x==null?null:JSON.parse(JSON.stringify(x));
 const stable=x=>JSON.stringify(x,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((o,k)=>(o[k]=v[k],o),{}):v);
+const OUTBOX_KEY='arto_outbox_v1';
+const getOutbox=()=>{try{const a=JSON.parse(localStorage.getItem(OUTBOX_KEY)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}};
+const setOutbox=a=>{try{localStorage.setItem(OUTBOX_KEY,JSON.stringify(a));}catch(e){}};
+const withTimeout=(p,ms,msg)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(Object.assign(new Error(msg||'timeout'),{code:'deadline-exceeded'})),ms))]);
+// Catat perubahan ke antrean. Data di layar sudah berubah; pengiriman ke server menyusul.
+function queueChanges(list){
+  if(cloud.mode==='local')return;
+  const box=getOutbox();
+  list.forEach(c=>box.push(c.col==='config'?{col:'config',id:'main',patch:clone(c.patch)}:{col:c.col,id:c.id,doc:c.doc?clone(c.doc):null}));
+  setOutbox(box);saveFeedback();flushOutbox();
+}
+// Tempelkan perubahan yang belum terkirim di atas data dari server
+function overlayOutbox(data,col){
+  getOutbox().forEach(e=>{
+    if(col&&e.col!==col)return;
+    if(e.col==='config')Object.assign(data.config,e.patch||{});
+    else applyChanges(data,[{col:e.col,id:e.id,doc:e.doc}]);
+  });
+}
+let flushing=false;
+async function flushOutbox(){
+  if(flushing||cloud.mode==='local'||!cloud.user||!db)return;
+  if(!getOutbox().length)return;
+  flushing=true;saveFeedback();
+  try{
+    while(getOutbox().length){
+      const part=getOutbox().slice(0,400),batch=db.batch(),main=db.collection('config').doc('main');
+      part.forEach(e=>{
+        if(e.col==='config')batch.set(main,e.patch||{},{merge:true});
+        else{const ref=db.collection(e.col).doc(e.id);e.doc?batch.set(ref,strip(e.doc)):batch.delete(ref);}
+      });
+      batch.set(main,{ledgerRevision:firebase.firestore.FieldValue.increment(1)},{merge:true});
+      await withTimeout(batch.commit(),25000,'Server belum merespons');
+      setOutbox(getOutbox().slice(part.length));
+    }
+    lastWriteError='';
+  }catch(e){console.warn('Arto: sinkron tertunda',e);}
+  finally{flushing=false;saveFeedback();if(getOutbox().length&&cloud.user)setTimeout(flushOutbox,navigator.onLine===false?30000:5000);}
+}
+window.addEventListener('online',()=>flushOutbox());
+setInterval(()=>{if(getOutbox().length&&!document.hidden)flushOutbox();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)flushOutbox();});
 function saveFeedback(){
   let el=$('save-state');if(!el){el=document.createElement('small');el.id='save-state';el.setAttribute('role','status');document.querySelector('.hello').append(el);}
-  const text=lastWriteError?'Penyimpanan gagal - periksa koneksi':pendingWrites||financeBusy?'Menyimpan...':cloud.mode==='local'?'Tersimpan di perangkat ini':cloud.pending?'Menunggu sinkronisasi':cloud.online===false?'Offline - data tersimpan sebelumnya':'';
-  el.textContent=text;el.hidden=!text;el.style.cssText='font-size:11px;display:block;color:var(--muted)';
+  const n=getOutbox().length, noUser=cloud.mode!=='local'&&!cloud.user;
+  const text=n&&noUser?`${n} perubahan tersimpan di HP. Ketuk untuk masuk dan sinkron`:n?(flushing?'Mengirim ke akun...':`${n} perubahan tersimpan di HP, menunggu sinkron`):noUser&&authKnown?'Belum masuk akun. Ketuk untuk masuk':lastWriteError?'Penyimpanan gagal - periksa koneksi':pendingWrites||financeBusy?'Menyimpan...':cloud.mode==='local'?'Tersimpan di perangkat ini':cloud.pending?'Menunggu sinkronisasi':cloud.online===false?'Offline - data tersimpan di HP':'';
+  el.textContent=text;el.hidden=!text;el.style.cssText='font-size:11px;display:block;color:'+(noUser?'var(--blue);text-decoration:underline;cursor:pointer':'var(--muted)');
+  el.onclick=noUser?()=>showLogin():null;
 }
 function applyChanges(data,list){list.forEach(c=>{const a=data[c.col],i=a.findIndex(x=>x.id===c.id);if(c.doc){if(i<0)a.push(clone(c.doc));else a[i]=clone(c.doc);}else if(i>=0)a.splice(i,1);});}
 function put(col,doc){return writeChanges([{col,id:doc.id,doc}]);}
 function del(col,id){return writeChanges([{col,id,doc:null}]);}
 function putConfig(patch){
-  const before=clone(S.config);Object.assign(S.config,patch);categoryCache=null;cache();
-  if(cloud.user&&db){pendingWrites++;lastWriteError='';saveFeedback();
-    const payload=Object.assign({},patch,{ledgerRevision:firebase.firestore.FieldValue.increment(1)});
-    db.collection('config').doc('main').set(payload,{merge:true}).then(()=>{lastWriteError='';}).catch(e=>{
-      Object.keys(patch).forEach(k=>{if(stable(S.config[k])===stable(patch[k])){if(before[k]===undefined)delete S.config[k];else S.config[k]=before[k];}});
-      lastWriteError=e.message;cache();render();toast('Pengaturan gagal disimpan. Coba lagi.',null,true);
-    }).finally(()=>{pendingWrites--;saveFeedback();});
-  }
+  Object.assign(S.config,patch);categoryCache=null;cache();
+  queueChanges([{col:'config',id:'main',patch}]);
 }
 // Compatibility path for small manager edits. All related writes remain atomic;
 // explicit pending/failed feedback replaces an unconditional cloud-save claim.
 function writeChanges(changes){
   const before=changes.map(c=>({col:c.col,id:c.id,doc:clone(S[c.col].find(x=>x.id===c.id)||null)}));
-  applyChanges(S,changes);categoryCache=null;cache();let failed=false;
-  if(cloud.user&&db){
-    pendingWrites++;lastWriteError='';saveFeedback();
-    try{
-      const batch=db.batch();changes.forEach(c=>{const ref=db.collection(c.col).doc(c.id);c.doc?batch.set(ref,strip(c.doc)):batch.delete(ref);});
-      batch.set(db.collection('config').doc('main'),{ledgerRevision:firebase.firestore.FieldValue.increment(1)},{merge:true});
-      batch.commit().catch(e=>{failed=true;lastWriteError=e.message;
-        applyChanges(S,before.filter((c,i)=>stable(S[c.col].find(x=>x.id===c.id)||null)===stable(changes[i].doc||null)));
-        categoryCache=null;cache();render();toast('Perubahan gagal disimpan. Periksa koneksi dan izin data.',null,true);
-      }).finally(()=>{pendingWrites--;saveFeedback();});
-    }catch(e){failed=true;pendingWrites--;applyChanges(S,before);cache();lastWriteError=e.message;saveFeedback();throw e;}
-  }
-  return async()=>{if(failed)throw new Error('Perubahan sebelumnya tidak tersimpan.');return commitFinancial(data=>{
+  applyChanges(S,changes);categoryCache=null;cache();queueChanges(changes);
+  return async()=>commitFinancial(data=>{
     changes.forEach(c=>{if(stable(data[c.col].find(x=>x.id===c.id)||null)!==stable(c.doc||null))throw new Error('Data sudah berubah. Batalkan melalui riwayat, bukan menimpa perubahan baru.');});return before;
-  },false);};
+  },false);
 }
 function expectUnchanged(data,col,original){
   if(original&&stable(data[col].find(x=>x.id===original.id)||null)!==stable(original))throw new Error('Data berubah di perangkat lain. Buka ulang formulir.');
@@ -944,15 +971,16 @@ async function commitFinancial(builder,makeUndo=true){
       before=changes.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
       applyChanges(S,changes);categoryCache=null;cache();
     }else{
-      if(!db)throw new Error('Layanan sinkron Arto belum termuat. Tutup Arto lalu buka lagi. Kalau tetap, coba ganti jaringan (Wi-Fi atau data seluler).');
-      await waitAuth();
-      if(!cloud.user)throw new Error('Arto belum masuk ke akunmu di HP ini. Buka Pengaturan lalu masuk lagi.');
-      await waitCloudReady();
-      if(pendingWrites||cloud.pending)throw new Error('Tunggu sinkronisasi selesai sebelum menyimpan transaksi ini.');
+      const saveLocal=()=>{const data=clone(S);changes=builder(data);validateChanges(data,changes);
+        before=changes.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
+        applyChanges(S,changes);categoryCache=null;cache();queueChanges(changes);};
+      const serverOk=db&&cloud.user&&cloud.ready&&navigator.onLine!==false&&!getOutbox().length&&!pendingWrites&&!cloud.pending;
       let committed=false;
+      if(!serverOk){saveLocal();committed=true;}
+      try{
       for(let attempt=0;attempt<3&&!committed;attempt++){
-        const guardRef=db.collection('config').doc('main'),guard=await guardRef.get({source:'server'}),cfg=guard.exists?guard.data():{},revision=Number(cfg.ledgerRevision)||0;
-        const lists=await Promise.all(COLS.map(c=>db.collection(c).get({source:'server'})));
+        const guardRef=db.collection('config').doc('main'),guard=await withTimeout(guardRef.get({source:'server'}),12000,'Server belum merespons'),cfg=guard.exists?guard.data():{},revision=Number(cfg.ledgerRevision)||0;
+        const lists=await withTimeout(Promise.all(COLS.map(c=>db.collection(c).get({source:'server'}))),15000,'Server belum merespons');
         const data=EMPTY();data.config=Object.assign({},cfg);COLS.forEach((c,i)=>{data[c]=lists[i].docs.map(d=>Object.assign({id:d.id},d.data()));});
         const planned=builder(data);validateChanges(data,planned);
         const prior=planned.map(c=>({col:c.col,id:c.id,doc:clone(data[c.col].find(x=>x.id===c.id)||null)}));
@@ -968,6 +996,10 @@ async function commitFinancial(builder,makeUndo=true){
           });
           changes=planned;before=prior;committed=true;applyChanges(S,changes);S.config.ledgerRevision=revision+1;categoryCache=null;cache();
         }catch(e){if(e.message!=='ARTO_RETRY_LEDGER'||attempt===2)throw e;}
+      }
+      }catch(e){
+        // Server tidak terjangkau: simpan di HP dan kirim nanti, jangan buang isian
+        const c=e&&e.code||'';if(c==='unavailable'||c==='deadline-exceeded'||c==='unauthenticated'||/offline|network|merespons|Failed to get/i.test(e&&e.message||'')){saveLocal();committed=true;}else throw e;
       }
     }
     if(!makeUndo)return null;
@@ -2097,18 +2129,20 @@ function showLogin() {
     <div class="field" style="margin-top:26px"><label for="lg-email">Email</label><input id="lg-email" class="text" type="email" value="${OWNER}" autocomplete="username"></div>
     <div class="field"><label for="lg-pass">Kata sandi</label><input id="lg-pass" class="text" type="password" autocomplete="current-password"></div>
     <p class="err" id="lg-err" hidden></p><button class="save" id="lg-go">Masuk</button>
+    ${S.wallets.length || S.tx.length ? '<button class="del" id="lg-back" style="color:var(--blue)">Kembali ke catatan (simpan di HP dulu)</button>' : ''}
     ${cloud.available && /github\.io$/.test(location.hostname) ? '' : '<button class="del" id="lg-local" style="color:var(--blue)">Coba tanpa akun (data hanya di perangkat ini)</button>'}</div>`;
   L.hidden = false;
   const goBtn = $('lg-go');
   const doLogin = () => {
     if (!auth) { const e = $('lg-err'); e.textContent = 'Tidak bisa terhubung ke server. Periksa koneksi internet.'; e.hidden = false; return; }
     goBtn.disabled = true; goBtn.textContent = 'Sedang masuk…';
-    auth.signInWithEmailAndPassword($('lg-email').value.trim(), $('lg-pass').value)
-      .catch(e => { const er = $('lg-err'); er.textContent = loginError(e && e.code); er.hidden = false; })
+    withTimeout(auth.signInWithEmailAndPassword($('lg-email').value.trim(), $('lg-pass').value), 25000, 'login-timeout')
+      .catch(e => { const er = $('lg-err'); er.textContent = e && e.message === 'login-timeout' ? 'Server login tidak merespons. Coba ganti jaringan (Wi-Fi atau data seluler), lalu coba lagi. Catatanmu tetap bisa dipakai tanpa masuk.' : loginError(e && e.code); er.hidden = false; })
       .finally(() => { goBtn.disabled = false; goBtn.textContent = 'Masuk'; });
   };
   goBtn.onclick = doLogin; $('lg-pass').addEventListener('keyup', e => { if (e.key === 'Enter') doLogin(); });
   const loc = $('lg-local'); if (loc) loc.onclick = () => { setMode('local'); L.hidden = true; render(); };
+  const bk = $('lg-back'); if (bk) bk.onclick = () => { L.hidden = true; render(); saveFeedback(); };
 }
 function fixFirstMonthBills() { autoFixOpeningDates(); }
 // Saldo awal dari versi lama belum punya tanggal. Isi otomatis dengan tanggal paling awal yang diketahui
@@ -2130,22 +2164,22 @@ function autoFixOpeningDates() {
 
 function stopSync() { unsubs.forEach(u => { try { u(); } catch (e) {} }); unsubs = []; }
 function startSync() {
-  stopSync(); cloud.ready = false;
+  stopSync(); cloud.ready = false; setTimeout(flushOutbox, 1500);
   const hasCache = S.wallets.length || S.tx.length || S.bills.length;
   if (hasCache) { render(); hideBoot(); }
   const got = new Set(), need = COLS.length + 1;
   const done = k => { got.add(k); if (got.size >= need && !cloud.ready) { cloud.ready = true; fixFirstMonthBills(); render(); hideBoot(); } };
   const timer = setTimeout(() => { if (!cloud.ready) { cloud.ready = true; render(); hideBoot(); } }, 9000);
   COLS.forEach(col => unsubs.push(db.collection(col).onSnapshot({ includeMetadataChanges: true }, s => {
-    if (!(s.empty && s.metadata.fromCache)) S[col] = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    if (!(s.empty && s.metadata.fromCache)) { S[col] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); overlayOutbox(S, col); categoryCache = null; }
     cloud.pending = s.metadata.hasPendingWrites; cache(); done(col); if (cloud.ready) render();
-  }, e => { console.error(e); if (e && e.code === 'permission-denied') { toast('Akun ini tidak punya akses ke Arto', null, true); signOut(); } })));
+  }, e => { console.error(e); if (e && e.code === 'permission-denied') { toast('Akun ini tidak punya akses ke Arto', null, true); stopSync(); } })));
   unsubs.push(db.collection('config').doc('main').onSnapshot(s => {
-    if (s.exists) S.config = Object.assign({ limit: 0, planSave: 0 }, s.data());
+    if (s.exists) { S.config = Object.assign({ limit: 0, planSave: 0 }, s.data()); overlayOutbox(S, 'config'); categoryCache = null; }
     cache(); done('config'); if (cloud.ready) { clearTimeout(timer); render(); }
   }, e => console.error(e)));
 }
-function signOut() { stopSync(); if (auth) auth.signOut(); S = EMPTY(); cache(); render(); toast('Berhasil keluar'); }
+function signOut() { if (getOutbox().length) { toast('Masih ada ' + getOutbox().length + ' perubahan belum tersinkron. Masuk dan tunggu sinkron dulu.', null, true); return; } stopSync(); if (auth) auth.signOut(); S = EMPTY(); cache(); render(); toast('Berhasil keluar'); }
 try {
   if (window.firebase && firebase.initializeApp) {
     firebase.initializeApp(FIREBASE_CONFIG);
@@ -2322,7 +2356,7 @@ if (cloud.available) {
   auth.onAuthStateChanged(u => {
     authKnown = true; authWaiters.splice(0).forEach(r => r());
     if (u && u.email && u.email.toLowerCase() === OWNER) { cloud.user = { email: u.email }; setMode('cloud'); $('login').hidden = true; startSync(); }
-    else { if (u) auth.signOut(); cloud.user = null; stopSync(); if (cloud.mode !== 'local') showLogin(); }
+    else { if (u) auth.signOut(); cloud.user = null; stopSync(); const hasData = S.wallets.length || S.tx.length || S.bills.length; if (cloud.mode !== 'local') { if (hasData) { $('login').hidden = true; hideBoot(); render(); } else showLogin(); } saveFeedback(); }
   });
 } else if (cloud.mode !== 'local') showLogin();
 if (!cloud.available && cloud.mode === 'local') hideBoot();
