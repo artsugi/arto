@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="only light">
 <meta name="theme-color" content="#F3F5FA">
-<title>Arto</title>
+<title>Arto v1.27</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -311,7 +311,7 @@
   .loading .brand { margin: 0 auto; animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { transform: scale(.92); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-/* Legacy components retained for compatibility. */
+/* Preview additions only. Original colors, typography and component shapes retained. */
 .flow-history { margin-top:18px; }
 .flow-history .list { border:1px solid var(--line); }
 .flow-head { width:100%; padding:16px; display:flex; align-items:center; gap:12px; text-align:left; border-bottom:1px solid var(--line); }
@@ -488,69 +488,23 @@
 @media(max-width:360px){.nav [data-go="harian"]{font-size:10.5px}.kind button{font-size:12px}.annual-month{padding-left:12px;padding-right:12px}.annual-month .amt{font-size:12.5px}.rep-btns .bar-btn{font-size:12px}.hero .fb{padding:10px 8px}.flow3 .fb b{font-size:14px}}
 
 
-/* Arto 1.26: soft iOS-inspired production theme. Accounting logic remains unchanged. */
-:root {
- --bg:#F4F7FC; --card:#FFFFFF; --bg-2:#EDF2F9; --line:#E4EAF3;
- --blue:#3267D6; --blue-2:#234EA9; --blue-soft:#E9F0FF;
- --red:#E95C68; --red-soft:#FFF0F1; --red-ink:#CB4653;
- --sky:#8DBFEF; --sky-soft:#EAF5FF; --sky-ink:#3977AD;
- --ink:#1B2B45; --muted:#718097;
- --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Plus Jakarta Sans",system-ui,sans-serif;
-}
-html {scroll-behavior:smooth;}
-body {background:radial-gradient(ellipse 95% 36% at 50% -10%,#DCEAFF 0%,transparent 100%),var(--bg);letter-spacing:-.012em;}
-.app {max-width:460px;padding:20px 20px 130px;}
-.top {gap:13px;margin-bottom:8px;}
-.avatar {width:46px;height:46px;border-radius:17px;box-shadow:0 6px 18px #3663B522;}
-.hello b {font-size:19px;letter-spacing:-.045em;font-weight:750;}
-.hello span {font-size:12px;}
-.icon-btn {background:#FFFFFFB8;border:1px solid #FFFFFFD9;box-shadow:0 3px 16px #234A7C0D;backdrop-filter:blur(18px);}
-.title {font-style:normal;color:var(--ink);font-size:29px;letter-spacing:-.055em;font-weight:780;}
-.sec {margin-top:28px;margin-bottom:12px;}
-.sec h2 {font-size:17px;letter-spacing:-.025em;font-weight:750;}
-.link {text-decoration:none;font-weight:700;}
-.hero,.lead.blue {background:linear-gradient(135deg,#4479E5 0%,#3163CF 54%,#234CB0 100%);box-shadow:0 14px 28px -17px #2856B6A0;}
-.hero {border-radius:30px;padding:24px 22px;position:relative;overflow:hidden;}
-.hero::after {content:"";position:absolute;right:-60px;top:-100px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle,#FFFFFF20,transparent 68%);pointer-events:none;}
-.hero .cap,.hero .sub,.lead .cap {font-style:normal;}
-.hero .big {letter-spacing:-.055em;font-weight:780;}
-.fb {background:#FFFFFF1C;border:1px solid #FFFFFF18;backdrop-filter:blur(6px);}
-.budget-card,.pk,.list,.start,.pending,.stat,.top-list,.split,.goal,.ledger,.period-note,.sum-box,.set-group,.report-card {box-shadow:0 5px 24px #29436B0A;border:1px solid #E7EDF580;}
-.budget-card,.pk,.list,.start,.pending,.top-list,.split,.goal,.ledger {border-radius:25px;}
-.wallets {margin:0 -20px;padding:4px 20px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
-.wcard {min-width:168px;padding:17px 18px;border-radius:23px;scroll-snap-align:start;border:1px solid #E9EEF7;box-shadow:0 5px 18px #29436B0C;}
-.wcard b {font-size:18px;letter-spacing:-.04em;}
-.wcard.add {border:1.5px dashed #B5C8EA;box-shadow:none;}
-.pk {min-height:158px;}
-.pk-name {font-style:normal;}
-.row {min-height:68px;}
-.ico {border-radius:15px;}
-.amt {letter-spacing:-.035em;}
-.nav {padding:0 12px calc(env(safe-area-inset-bottom,0px) + 10px);}
-.nav-in {max-width:450px;border-radius:29px;background:#FFFFFFD9;border:1px solid #FFFFFFF2;box-shadow:0 10px 36px #28426B26;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);}
-.nav .tab {font-size:11px;font-weight:650;border-radius:19px;}
-.nav .tab[aria-current="page"] {background:#E9F0FFAD;color:var(--blue);}
-.plus {background:linear-gradient(145deg,#F27A80,#E75067);box-shadow:0 9px 22px -8px #D64A66AA;}
-.scrim {background:#14284266;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);}
-.sheet {border-radius:32px 32px 24px 24px;box-shadow:0 -18px 55px #182D4A24;}
-.grip {background:#D5DCE8;}
-.sh-head h3 {font-style:normal;color:var(--ink);font-weight:780;letter-spacing:-.04em;}
-.kind,.seg {background:#EDF2F8;}
-.kind button[aria-pressed="true"] {box-shadow:0 2px 7px #28426B15;}
-.money {background:#F0F5FC;border:1px solid #E6EDF8;}
-.money input {letter-spacing:-.045em;}
-.text,.sel {background:#F8FAFE;border-color:#E5EBF5;}
-.save {background:linear-gradient(135deg,#477BE6,#2F60CF);box-shadow:0 7px 17px -11px #3267D6A0;}
-.dd-trigger {background:#F4F7FC;border:1px solid #E8EDF6;border-radius:17px;}
-.dd-trigger[aria-expanded="true"] {background:#EAF1FF;border-color:#AFC7F3;}
-.dd-symbol {border-radius:12px;}
-.dd-arrow {border-radius:11px;}
-.dd-menu {border-radius:23px;box-shadow:0 15px 45px #20395B2B;}
-.dd-option {border-radius:15px;}
-.screen {background:radial-gradient(ellipse 110% 40% at 50% 0%,#DFEAFF,transparent),var(--bg);}
-.screen h1 {font-style:normal;letter-spacing:-.055em;}
-@media(max-width:360px) {.app{padding-left:14px;padding-right:14px}.wallets{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}.hero{padding:19px}.nav .tab{font-size:10px}}
-@media(prefers-reduced-transparency:reduce) {.nav-in,.icon-btn{background:#fff}.scrim{backdrop-filter:none}}
+/* Arto v1.27 — Apple UI QC v8 visual integration, preserving production logic */
+:root{--bg:#f2f6fc;--bg-2:#e8eff9;--card:#ffffff;--line:#e5edf7;--blue:#0875e9;--blue-2:#0966d6;--blue-soft:#e5f0ff;--ink:#192b46;--muted:#7b8da5;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Segoe UI",sans-serif}
+html{background:#edf2f9}body{background:radial-gradient(ellipse at 70% -6%,#d5e7ff 0,transparent 45%),linear-gradient(175deg,#f1f6ff 0%,#f6f8fc 40%,#f2f5fa 100%);min-height:100dvh;color:var(--ink)}
+.app{max-width:480px;min-height:100dvh;padding:20px 20px 132px;position:relative;background:radial-gradient(ellipse at 80% 0%,#d9e9ff7c,transparent 35%);box-shadow:0 0 65px #0d2b4b12}
+.top{padding:8px 2px 14px;gap:10px}.avatar{width:38px;height:38px;border-radius:13px;background:#fff;box-shadow:0 3px 12px #23416b10}.hello b{font-size:21px;font-weight:750;letter-spacing:-.9px}.hello span{color:#8495ab;font-size:12px}.icon-btn{width:39px;height:39px;border:1px solid #ffffffc9;background:linear-gradient(145deg,#ffffffed,#edf4ffcf);box-shadow:0 3px 12px #23416b0b;color:#254d7e}
+.title{font-size:32px;font-weight:760;font-style:normal;letter-spacing:-1.35px;color:#192338;margin:22px 2px 18px}.sec{margin:28px 2px 12px}.sec h2{font-size:19px;font-weight:700;letter-spacing:-.55px}.sec span{font-size:12px}.link{color:#0875e9;text-decoration:none;font-weight:650}
+.hero,.lead.blue,.lead.plain,.lead.red{background:radial-gradient(ellipse at 95% -20%,#c4e1ffbd,transparent 54%),linear-gradient(135deg,#fdfefe,#edf4ff 72%,#e8f2ff);border:1px solid #ffffffeb;color:#1a2b45;box-shadow:0 12px 32px #21487516,inset 0 1px #fff;border-radius:28px}
+.hero{padding:24px 22px}.hero .cap,.lead .cap,.lead.plain .cap{color:#7387a3;font-style:normal;font-size:13px;font-weight:550}.hero .big,.lead .big{color:#142a4e;font-weight:730;letter-spacing:-1.4px;margin-top:8px}.hero .sub,.lead .sub,.lead.plain .sub{color:#7185a2}.hero .total-row{border-top:1px solid #d8e4f3;color:#7185a2}.hero .total-row b{color:#213d66}.hero .fb,.lead .fb{background:#ffffff6e;border:1px solid #ffffffac;border-radius:16px}.hero .fb small,.lead .fb small{color:#7185a2}.hero .fb b,.lead .fb b{color:#213d66}
+.budget-card,.card,.list,.start,.pk,.stat,.top-list,.split,.pending{background:linear-gradient(145deg,#ffffffec,#ffffffd7);border:1px solid #fff;box-shadow:0 8px 24px #1c42670b,inset 0 1px #fff;border-radius:24px}
+.budget-card{position:relative;overflow:hidden;min-height:153px;padding:21px 22px 19px;gap:10px;background:linear-gradient(135deg,#ffffffe6,#f0f7ffc4 58%,#e4efffa3);box-shadow:0 12px 32px #2d4d7818,inset 0 1px #fff}.budget-card:before{content:"";position:absolute;right:-85px;top:-125px;width:270px;height:270px;border-radius:50%;background:radial-gradient(circle,#80b5ff38,transparent 68%);pointer-events:none}.budget-card > b{font-size:29px;font-weight:720;letter-spacing:-1px;color:#152640}.bc-name{font-style:normal;font-weight:650;color:#7788a2}.bc-pct{color:#246ac7;background:#e6f1ff;border-radius:99px;padding:5px 9px;font-size:11px}.bc-bar{height:6px;border-radius:99px;background:#dce8f7}.bc-bar i{border-radius:99px;background:linear-gradient(90deg,#74b5ff,#2179e9 72%,#0869d8)}.budget-card > small{font-size:11px;font-weight:500;color:#8494ae}
+.wallets{gap:12px;margin:0 -20px;padding:4px 20px 18px;scroll-snap-type:x mandatory;scroll-padding:20px;-webkit-overflow-scrolling:touch}.wcard{flex:0 0 208px;min-width:208px;min-height:157px;scroll-snap-align:start;padding:19px 20px 17px;border:1px solid #ffffffef;border-radius:28px;background:radial-gradient(ellipse at 100% 0%,#ffffffb8,transparent 58%),linear-gradient(155deg,#ffffffd9,#e9f1ffb0);box-shadow:0 9px 23px #214a8010,inset 0 1px #fff;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;justify-content:space-between;color:#19345c}.wcard small{font-size:13px;font-weight:600;color:#6e83a0}.wcard b{font-size:20px;letter-spacing:-.7px;font-weight:750;color:#18345e}.wcard.add{min-width:165px;flex-basis:165px;border:1px dashed #88b9ff;background:#ffffff91;color:#0875e9}
+.row{min-height:68px;padding:15px 17px}.row+.row{border-top-color:#edf1f6}.ico,.ico.b,.ico.r,.ico.s,.ico.g{background:#edf3ff;color:#327ce5;border-radius:15px;width:43px;height:43px}.ico.r{background:#fff0e6;color:#d4772c}.ico.in{background:#eaf0ff;color:#2375dd}.t1{font-size:14px;font-weight:680}.t2{font-size:11px;color:#909bad}.amt{font-size:13px;font-weight:730}.amt.pos{color:#1877dc}.pk-name{font-style:normal}.pk,.stat{box-shadow:0 6px 20px #1c42670a}
+.nav{bottom:calc(13px + env(safe-area-inset-bottom));padding:0 14px}.nav-in{max-width:442px;grid-template-columns:1fr 1fr 68px 1fr 1fr;gap:1px;padding:8px 7px;border:1px solid #ffffffea;background:#ffffffb8;backdrop-filter:blur(32px) saturate(1.8);-webkit-backdrop-filter:blur(32px) saturate(1.8);border-radius:29px;box-shadow:0 12px 34px #183e7030,inset 0 1px #fff}.nav .tab{height:54px;font-size:10px;font-weight:650;color:#8492a7;border-radius:19px}.nav .tab[aria-current="page"]{background:#dcecffb9;color:#0875e9}.nav .tab svg{width:21px;height:21px}
+.plus{background:linear-gradient(155deg,#4ca5ff,#0966e9)!important;border:1px solid #7ebaff!important;border-radius:20px!important;box-shadow:0 6px 16px #247fe34a,inset 0 1px #ffffff85!important;color:#fff!important;width:56px!important;height:56px!important;margin:auto}
+.sheet{background:linear-gradient(180deg,#f7faff,#eff4fc);border:1px solid #ffffffcf;box-shadow:0 -18px 55px #1b355438;border-radius:30px 30px 0 0;padding:13px 20px calc(25px + env(safe-area-inset-bottom))}.kind{background:transparent;gap:8px;padding:0}.kind button{height:65px;background:#ffffffbd;border:1px solid #fff;border-radius:17px;font-size:12px;font-weight:650}.kind button[aria-pressed="true"]{background:#e4f0ff;border-color:#88b9ff;color:#076be2;box-shadow:none}.field>label,.field>.lbl{font-size:11px;color:#8692a3;font-weight:650}.field input,.field select,.field textarea,.text{border-radius:14px}.save{background:linear-gradient(145deg,#3b94ff,#0966e9);box-shadow:0 7px 16px #1b78e72b;border-radius:16px;font-weight:680}.chip{border:1px solid #ffffffc7;background:#ffffffbd;color:#65738b}.chip[aria-pressed="true"]{background:#e4f0ff;color:#076be2}
+@media(min-width:650px){.app{margin:22px auto;min-height:calc(100dvh - 44px);border-radius:36px}.nav{bottom:32px}}
+@media(prefers-reduced-motion:reduce){.page.on{animation:none}}
 
 </style>
 </head>
@@ -591,7 +545,7 @@ body {background:radial-gradient(ellipse 95% 36% at 50% -10%,#DCEAFF 0%,transpar
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.26';
+const APP_VERSION = '1.25';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
