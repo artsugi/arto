@@ -1,6 +1,6 @@
 // Arto: membuat aplikasi tetap bisa dibuka tanpa sinyal.
 // Data belanja tetap disinkronkan oleh Firebase (bukan oleh file ini).
-const CACHE = 'arto-shell-v1';
+const CACHE = 'arto-shell-v125';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 const NETWORK_TIMEOUT_MS = 3500;

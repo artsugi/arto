@@ -327,6 +327,7 @@
 .tx-edit:focus-visible { outline-offset:-3px; }
 .tx-edit .t2 { font-size:11.5px; }
 .flow-history .tx-edit .t2 { white-space:normal; line-height:1.45; }
+.auto-mark{display:inline-block;margin-top:4px;padding:2px 7px;border-radius:7px;background:var(--blue-soft);color:var(--blue-2);font-size:10px;font-weight:800}.auto-source{background:var(--bg-2);border-radius:16px;padding:12px 14px;margin-top:14px}.auto-source small{display:block;color:var(--muted);font-size:12px;line-height:1.5}
 .flow-help { margin:10px 4px 0; color:var(--muted); font-size:12px; }
 .period-label { display:block; font-size:12px; color:var(--muted); line-height:1.6; margin-top:6px; }
 .info-caption { margin:12px 4px; color:var(--muted); font-size:12px; line-height:1.6; }
@@ -400,6 +401,7 @@
 }
 
 .tx-edit .t2 { white-space:normal; line-height:1.45; }
+.auto-mark{display:inline-block;margin-top:4px;padding:2px 7px;border-radius:7px;background:var(--blue-soft);color:var(--blue-2);font-size:10px;font-weight:800}.auto-source{background:var(--bg-2);border-radius:16px;padding:12px 14px;margin-top:14px}.auto-source small{display:block;color:var(--muted);font-size:12px;line-height:1.5}
 
 
 /* Preview v3: the requested home tabs and matching form dropdowns only. */
@@ -524,7 +526,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.23';
+const APP_VERSION = '1.25';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
@@ -1110,7 +1112,7 @@ function txRow(x) {
   const fee=linkedFee(S,x.id);if(fee)sub+=' - Admin '+rp(fee.amount);
   sub+=' - '+dShort(x.date);
   const sign=['in','withdraw'].includes(x.type)?'+':x.type==='transfer'?'':['adjust','goal_adjust'].includes(x.type)?(x.amount>=0?'+':'\u2212'):'\u2212';
-  return `<button class="row tx-edit" data-edit="${esc(x.id)}" aria-label="Ubah ${esc(x.name)}, ${esc(rp(x.amount))}"><span class="ico ${cls}">${svg(icon||'dots')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${esc(sub)}</span></span><span class="amt num ${sign==='+'?'pos':''}">${sign}${fmt(x.amount)}<span class="edit-hint">${x.feeFor?'Ubah pembayaran':'Ubah'}</span></span></button>`;
+  return `<button class="row tx-edit" data-edit="${esc(x.id)}" aria-label="Ubah ${esc(x.name)}, ${esc(rp(x.amount))}"><span class="ico ${cls}">${svg(icon||'dots')}</span><span class="grow"><span class="t1">${esc(x.name)}</span><span class="t2">${esc(sub)}</span>${x.importSource==='android-notification'?'<span class="auto-mark">AUTO</span>':''}</span><span class="amt num ${sign==='+'?'pos':''}">${sign}${fmt(x.amount)}<span class="edit-hint">${x.feeFor?'Ubah pembayaran':'Ubah'}</span></span></button>`;
 }
 
 const byDate = arr => arr.slice().sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
@@ -1554,7 +1556,7 @@ function openTx(init={}){
   else if(k==='in')body+=`<div class="field"><label for="f-name">Keterangan / sumber pemasukan</label><input class="text" id="f-name" value="${esc(f.name)}" placeholder="Contoh: Gaji bulanan atau proyek video"></div><div class="field"><span class="lbl">Masuk ke dompet</span>${walletDropdown('wallet',f.wallet)}</div>`;
   else if(k==='save')body+=`<div class="field"><span class="lbl">Arah</span>${chipRow('dir',[{id:'save',name:'Simpan ke tabungan'},{id:'withdraw',name:'Ambil dari tabungan'}],f.dir)}</div><div class="field"><span class="lbl">Tujuan</span>${S.goals.length?chipRow('goal',S.goals.map(g=>({id:g.id,name:g.name,sub:rp(goalSaved(g))})),f.goal):'<p class="hint">Tambahkan tujuan tabungan terlebih dahulu.</p>'}</div><div class="field"><span class="lbl">${f.dir==='save'?'Dari dompet':'Masuk ke dompet'}</span>${walletDropdown('wallet',f.wallet)}</div><p class="hint">Perpindahan internal, bukan pendapatan atau belanja.</p>`;
   else body+=`<div class="field"><span class="lbl">Dari dompet</span>${walletDropdown('wallet',f.wallet)}</div><div class="field"><span class="lbl">Ke dompet</span>${walletDropdown('toWallet',f.toWallet)}</div>${moneyField('f-fee','Biaya admin (opsional)',f.fee)}<div class="sum-box fee-total"><small>Total dari dompet asal</small><b class="num" id="transfer-total">${rp(f.amount+f.fee)}</b></div><p class="hint">Dompet tujuan menerima jumlah transfer. Hanya biaya admin dihitung sebagai pengeluaran.</p>`;
-  body+=dateField(f)+`<p class="err" id="f-err" hidden></p><button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan'}</button>${edit?'<button class="del" id="f-del">Hapus catatan</button>':''}`;
+  body+=dateField(f)+(edit&&edit.importSource==='android-notification'?`<div class="auto-source"><b>Detected automatically</b><small>Source: ${esc(edit.sourceApp||'Android notification')} · Original amount: ${rp(edit.detectedAmount||edit.amount)}</small><small>Changes to this transaction will not modify the original detection record. The transaction remains fully editable.</small></div>`:'')+`<p class="err" id="f-err" hidden></p><button class="save" id="f-save">${edit?'Simpan perubahan':'Simpan'}</button>${edit?'<button class="del" id="f-del">Hapus catatan</button>':''}`;
   openSheet(edit?'Ubah catatan':'Catat uang',body,root=>{
    const keep=()=>{const n=root.querySelector('#f-name');if(n)f.name=n.value;};
    const totals=()=>{const el=root.querySelector('#transfer-total');if(el)el.textContent=rp(f.amount+f.fee);};
@@ -1949,6 +1951,7 @@ function openSettings() {
       <button class="set-row" id="s-limit"><span class="grow"><span class="t1">Batas Harian per bulan</span><span class="t2">${S.config.limit ? rp(S.config.limit) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       <button class="set-row" id="s-plan"><span class="grow"><span class="t1">Rencana tabungan per bulan</span><span class="t2">${S.config.planSave ? rp(S.config.planSave) : 'Belum diatur'}</span></span><span class="chev">${svg('right', 2.6)}</span></button></div>
     ${legacyOpeningMissing(S,true).length ? `<div class="set-label">Perbaikan data lama</div><div class="set-group"><button class="set-row" id="s-legacy-opening"><span class="ico b" style="width:36px;height:36px">${svg('clock')}</span><span class="grow"><span class="t1">Perbaiki tanggal saldo awal</span><span class="t2">${legacyOpeningMissing().length} data lama belum memiliki tanggal saldo awal</span></span><span class="chev">${svg('right',2.6)}</span></button></div>` : ''}
+    <div class="set-label">Automatic payments</div><div class="set-group"><button class="set-row" id="s-automation"><span class="ico b" style="width:36px;height:36px">${svg('bolt')}</span><span class="grow"><span class="t1">Payment notification capture</span><span class="t2">Manage wallet mapping and supported apps</span></span><span class="chev">${svg('right',2.6)}</span></button></div>
     <div class="set-label">Keamanan di HP ini</div><div class="set-group">
       <button class="set-row" id="s-pin"><span class="ico g" style="width:36px;height:36px">${svg('lock')}</span><span class="grow"><span class="t1">${pinOn ? 'Ganti PIN' : 'Pasang PIN'}</span><span class="t2">${pinOn ? 'Diminta setiap Arto dibuka' : 'Kunci Arto dengan 4 angka'}</span></span><span class="chev">${svg('right', 2.6)}</span></button>
       <button class="set-row" id="s-bio" role="switch" aria-checked="${!!(pinOn && getBio())}" ${!bioAvail || !pinOn ? 'disabled' : ''} style="${!bioAvail || !pinOn ? 'opacity:.55' : ''}"><span class="ico g" style="width:36px;height:36px">${svg('finger', 1.8)}</span><span class="grow"><span class="t1">Buka dengan sidik jari</span><span class="t2">${!bioAvail ? 'Tidak tersedia di perangkat atau browser ini' : !pinOn ? 'Pasang PIN dulu sebagai cadangan' : getBio() ? 'Aktif, PIN tetap bisa dipakai' : 'Lebih cepat daripada mengetik PIN'}</span></span><span class="sw" aria-hidden="true"><i></i></span></button>
@@ -1961,6 +1964,7 @@ function openSettings() {
     <p class="hint" style="text-align:center;margin-top:16px">Arto versi ${APP_VERSION}</p>`, root => {
     const back = () => openSettings();
     root.querySelector('#s-backup').onclick=downloadBackup;
+    root.querySelector('#s-automation').onclick=()=>openAutomationSettings();
     root.querySelectorAll('[data-w]').forEach(r => r.onclick = () => openWalletForm(r.dataset.w, back));
     root.querySelector('#s-wadd').onclick = () => openWalletForm(null, back);
     root.querySelectorAll('[data-i]').forEach(r => r.onclick = () => openIncomeForm(r.dataset.i, back));
@@ -1975,6 +1979,32 @@ function openSettings() {
     const o = root.querySelector('#s-out'); if (o) o.onclick = () => { closeSheet(); signOut(); };
     const i = root.querySelector('#s-in'); if (i) i.onclick = () => { closeSheet(); setMode('cloud'); showLogin(); };
   });
+}
+
+// Android notification capture settings. This is configuration only; Android requires a separate listener.
+const AUTO_APPS=['BCA','Jago','BRI','GoPay','DANA','Jenius'];
+function openAutomationSettings(){
+ const sources=Array.isArray(S.config.paymentSources)?S.config.paymentSources:AUTO_APPS;
+ const mappings=S.config.paymentWalletMap||{};
+ const apps=[...new Set([...AUTO_APPS,...sources])];
+ const options=activeWallets().map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+ openSheet('Automatic payments',`<p class="hint">Android notifications are collected by a separate automation. This PWA cannot access other apps' notifications directly.</p>
+ <div class="set-label">Payment apps</div><div class="set-group">${apps.map(a=>`<div class="set-row" data-app="${esc(a)}"><span class="grow"><span class="t1">${esc(a)}</span><span class="t2">Wallet mapping</span><select class="sel" data-map="${esc(a)}" style="margin-top:8px"><option value="">Choose wallet</option>${options}</select></span><input type="checkbox" data-enable="${esc(a)}" ${sources.includes(a)?'checked':''} style="width:20px;height:20px;accent-color:var(--blue)"></div>`).join('')}</div>
+ <div class="field"><label for="auto-new-app">Add another app</label><input class="text" id="auto-new-app" placeholder="e.g. SeaBank" maxlength="50"></div>
+ <button class="bar-btn" id="auto-add">Add payment app</button><p class="hint">Adding an app here does not automatically configure MacroDroid or its notification parser.</p>
+ <button class="save" id="auto-save">Save settings</button>`,root=>{
+  root.querySelectorAll('[data-map]').forEach(el=>{el.value=mappings[el.dataset.map]||'';});
+  root.querySelector('#auto-add').onclick=()=>{
+   const name=root.querySelector('#auto-new-app').value.trim();if(!name)return;
+   if(apps.some(a=>a.toLowerCase()===name.toLowerCase())){toast('App already exists');return;}
+   const next=[...sources,name];putConfig({paymentSources:next});openAutomationSettings();
+  };
+  root.querySelector('#auto-save').onclick=()=>{
+   const enabled=[...root.querySelectorAll('[data-enable]:checked')].map(el=>el.dataset.enable);
+   const map={};root.querySelectorAll('[data-map]').forEach(el=>{if(el.value)map[el.dataset.map]=el.value;});
+   putConfig({paymentSources:enabled,paymentWalletMap:map});closeSheet();toast('Payment settings saved');
+  };
+ },openSettings);
 }
 
 // ================= PIN (per perangkat) =================
