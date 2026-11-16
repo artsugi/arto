@@ -311,7 +311,7 @@
   .loading .brand { margin: 0 auto; animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { transform: scale(.92); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-/* Preview additions only. Original colors, typography and component shapes retained. */
+/* Legacy components retained for compatibility. */
 .flow-history { margin-top:18px; }
 .flow-history .list { border:1px solid var(--line); }
 .flow-head { width:100%; padding:16px; display:flex; align-items:center; gap:12px; text-align:left; border-bottom:1px solid var(--line); }
@@ -487,6 +487,71 @@
 .asset-hero .big{font-size:clamp(24px,8.4vw,40px)}.asset-hero .fb b{white-space:normal;overflow-wrap:anywhere}
 @media(max-width:360px){.nav [data-go="harian"]{font-size:10.5px}.kind button{font-size:12px}.annual-month{padding-left:12px;padding-right:12px}.annual-month .amt{font-size:12.5px}.rep-btns .bar-btn{font-size:12px}.hero .fb{padding:10px 8px}.flow3 .fb b{font-size:14px}}
 
+
+/* Arto 1.26: soft iOS-inspired production theme. Accounting logic remains unchanged. */
+:root {
+ --bg:#F4F7FC; --card:#FFFFFF; --bg-2:#EDF2F9; --line:#E4EAF3;
+ --blue:#3267D6; --blue-2:#234EA9; --blue-soft:#E9F0FF;
+ --red:#E95C68; --red-soft:#FFF0F1; --red-ink:#CB4653;
+ --sky:#8DBFEF; --sky-soft:#EAF5FF; --sky-ink:#3977AD;
+ --ink:#1B2B45; --muted:#718097;
+ --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Plus Jakarta Sans",system-ui,sans-serif;
+}
+html {scroll-behavior:smooth;}
+body {background:radial-gradient(ellipse 95% 36% at 50% -10%,#DCEAFF 0%,transparent 100%),var(--bg);letter-spacing:-.012em;}
+.app {max-width:460px;padding:20px 20px 130px;}
+.top {gap:13px;margin-bottom:8px;}
+.avatar {width:46px;height:46px;border-radius:17px;box-shadow:0 6px 18px #3663B522;}
+.hello b {font-size:19px;letter-spacing:-.045em;font-weight:750;}
+.hello span {font-size:12px;}
+.icon-btn {background:#FFFFFFB8;border:1px solid #FFFFFFD9;box-shadow:0 3px 16px #234A7C0D;backdrop-filter:blur(18px);}
+.title {font-style:normal;color:var(--ink);font-size:29px;letter-spacing:-.055em;font-weight:780;}
+.sec {margin-top:28px;margin-bottom:12px;}
+.sec h2 {font-size:17px;letter-spacing:-.025em;font-weight:750;}
+.link {text-decoration:none;font-weight:700;}
+.hero,.lead.blue {background:linear-gradient(135deg,#4479E5 0%,#3163CF 54%,#234CB0 100%);box-shadow:0 14px 28px -17px #2856B6A0;}
+.hero {border-radius:30px;padding:24px 22px;position:relative;overflow:hidden;}
+.hero::after {content:"";position:absolute;right:-60px;top:-100px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle,#FFFFFF20,transparent 68%);pointer-events:none;}
+.hero .cap,.hero .sub,.lead .cap {font-style:normal;}
+.hero .big {letter-spacing:-.055em;font-weight:780;}
+.fb {background:#FFFFFF1C;border:1px solid #FFFFFF18;backdrop-filter:blur(6px);}
+.budget-card,.pk,.list,.start,.pending,.stat,.top-list,.split,.goal,.ledger,.period-note,.sum-box,.set-group,.report-card {box-shadow:0 5px 24px #29436B0A;border:1px solid #E7EDF580;}
+.budget-card,.pk,.list,.start,.pending,.top-list,.split,.goal,.ledger {border-radius:25px;}
+.wallets {margin:0 -20px;padding:4px 20px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
+.wcard {min-width:168px;padding:17px 18px;border-radius:23px;scroll-snap-align:start;border:1px solid #E9EEF7;box-shadow:0 5px 18px #29436B0C;}
+.wcard b {font-size:18px;letter-spacing:-.04em;}
+.wcard.add {border:1.5px dashed #B5C8EA;box-shadow:none;}
+.pk {min-height:158px;}
+.pk-name {font-style:normal;}
+.row {min-height:68px;}
+.ico {border-radius:15px;}
+.amt {letter-spacing:-.035em;}
+.nav {padding:0 12px calc(env(safe-area-inset-bottom,0px) + 10px);}
+.nav-in {max-width:450px;border-radius:29px;background:#FFFFFFD9;border:1px solid #FFFFFFF2;box-shadow:0 10px 36px #28426B26;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);}
+.nav .tab {font-size:11px;font-weight:650;border-radius:19px;}
+.nav .tab[aria-current="page"] {background:#E9F0FFAD;color:var(--blue);}
+.plus {background:linear-gradient(145deg,#F27A80,#E75067);box-shadow:0 9px 22px -8px #D64A66AA;}
+.scrim {background:#14284266;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);}
+.sheet {border-radius:32px 32px 24px 24px;box-shadow:0 -18px 55px #182D4A24;}
+.grip {background:#D5DCE8;}
+.sh-head h3 {font-style:normal;color:var(--ink);font-weight:780;letter-spacing:-.04em;}
+.kind,.seg {background:#EDF2F8;}
+.kind button[aria-pressed="true"] {box-shadow:0 2px 7px #28426B15;}
+.money {background:#F0F5FC;border:1px solid #E6EDF8;}
+.money input {letter-spacing:-.045em;}
+.text,.sel {background:#F8FAFE;border-color:#E5EBF5;}
+.save {background:linear-gradient(135deg,#477BE6,#2F60CF);box-shadow:0 7px 17px -11px #3267D6A0;}
+.dd-trigger {background:#F4F7FC;border:1px solid #E8EDF6;border-radius:17px;}
+.dd-trigger[aria-expanded="true"] {background:#EAF1FF;border-color:#AFC7F3;}
+.dd-symbol {border-radius:12px;}
+.dd-arrow {border-radius:11px;}
+.dd-menu {border-radius:23px;box-shadow:0 15px 45px #20395B2B;}
+.dd-option {border-radius:15px;}
+.screen {background:radial-gradient(ellipse 110% 40% at 50% 0%,#DFEAFF,transparent),var(--bg);}
+.screen h1 {font-style:normal;letter-spacing:-.055em;}
+@media(max-width:360px) {.app{padding-left:14px;padding-right:14px}.wallets{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}.hero{padding:19px}.nav .tab{font-size:10px}}
+@media(prefers-reduced-transparency:reduce) {.nav-in,.icon-btn{background:#fff}.scrim{backdrop-filter:none}}
+
 </style>
 </head>
 <body>
@@ -526,7 +591,7 @@
 (function () {
 'use strict';
 // ================= Pengaturan dasar =================
-const APP_VERSION = '1.25';
+const APP_VERSION = '1.26';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAHrPUPBs8Xqoz6cR0MfJFCA7JhP6G_NfU",
   authDomain: "arto-12d1c.firebaseapp.com",
