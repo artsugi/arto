@@ -506,6 +506,25 @@ html{background:#edf2f9}body{background:radial-gradient(ellipse at 70% -6%,#d5e7
 @media(min-width:650px){.app{margin:22px auto;min-height:calc(100dvh - 44px);border-radius:36px}.nav{bottom:32px}}
 @media(prefers-reduced-motion:reduce){.page.on{animation:none}}
 
+
+/* v1.27 bottom-sheet surface correction: consistent iOS-style background */
+.sheet{
+  background:#f5f7fb;
+  border:1px solid rgba(255,255,255,.85);
+  border-bottom:0;
+}
+.sheet .sh-head{
+  background:#f5f7fb;
+  box-shadow:none;
+  border:0;
+}
+.sheet .sheet-action{
+  background:#f5f7fb;
+  border-top:1px solid #e5eaf2;
+}
+.sheet .kind button{background:#fff;}
+.sheet .kind button[aria-pressed="true"]{background:#e4f0ff;}
+
 </style>
 </head>
 <body>
